@@ -14,6 +14,7 @@ Servidor [MCP](https://modelcontextprotocol.io) que consulta el tipo de cambio p
 | `monedas_disponibles` | `VariablesDisponibles` | Código y nombre de cada moneda. No consulta el tipo de cambio |
 | `tipo_cambio_moneda` | `Variables` y `TipoCambioRango` de esa fecha | Quetzales por 1 unidad de esa moneda |
 | `tipo_cambio_moneda_rango` | `TipoCambioRangoMoneda` | Serie de esa moneda, ya convertida a quetzales |
+| `convertir_monto` | la cotización de `tipo_cambio_moneda` | Un monto pasado a quetzales o desde quetzales |
 
 `tipo_cambio_desde` y `tipo_cambio_moneda_rango` aceptan `agrupacion`: `auto` (diaria hasta 62 puntos, semanal hasta cerca de un año, mensual si el tramo es más largo), `diaria`, `semanal` o `mensual`. Cada punto agregado trae cierre, mínimo y máximo. El resumen incluye inicio, fin, variación, mínimo, máximo y cuántos registros diarios había.
 
@@ -26,14 +27,18 @@ El servicio `Variables` no cotiza contra el quetzal: cotiza contra el dólar, co
 | 9 libra, 24 euro, 26 DEG | `usd_por_unidad` (USD por 1 unidad) | cotización × referencia USD |
 | El resto | `unidades_por_usd` (unidades por 1 USD) | referencia USD ÷ cotización |
 
-La referencia USD es la del mismo día, leída con `TipoCambioRango(fecha, fecha)`. Si ese día no trae dato, se usa `TipoCambioDia` y el texto lo dice.
+La referencia USD es la del mismo día, leída con `TipoCambioRango(fecha, fecha)`. Si ese día no trae dato, se busca la fecha anterior más cercana en los 7 días previos. Si no hay ninguna, la herramienta devuelve un error. No se usa el tipo de cambio de hoy para una fecha histórica. `referencia` es `misma_fecha` o `fecha_anterior`, y `fecha_referencia` es el día de esa referencia.
 
 - El código 1 es el quetzal. La herramienta responde que no tiene cotización contra sí mismo.
 - El código 2 usa la referencia del día, la misma cifra que `tipo_cambio_hoy`.
 - Si la fecha de la cotización tiene más de 30 días, `descontinuada` es `true`. `monedas_disponibles` solo documenta ese campo: no llama al servicio una vez por moneda.
 - En las series, una fecha posterior a hoy (hora de Guatemala) llega con `publicado_anticipado: true`. El Banguat publica por adelantado el siguiente día hábil. `tipo_cambio_hoy` no cambia.
 
-Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988 USD por euro, así que 1 euro = Q8.40. El peso mexicano venía a 19.0201 pesos por dólar, así que 1 peso = Q0.40.
+Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988 USD por euro, así que 1 euro = Q8.4034. El peso mexicano venía a 19.0201 pesos por dólar, así que 1 peso mexicano = Q0.4021.
+
+## Precisión y redondeo
+
+Todo número que sale en el texto o en los datos estructurados se redondea a 6 cifras significativas. En el texto de una cotización, si el quetzal por unidad es 0.1 o más se muestra con 4 decimales (`Q8.4034`). Si es menor, se expresa por 100 unidades (`100 Pesos Colombianos = Q0.2236`) para no mostrar `Q0.00`. `convertir_monto` formatea el resultado con `Intl.NumberFormat("es-GT")`, por ejemplo `250 euros = Q2,100.85`.
 
 ## Ejemplos de respuesta
 
@@ -46,7 +51,7 @@ Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988
 `tipo_cambio_moneda` con código 24:
 
 ```text
-1 Euro = Q8.40 al 20/11/2026 (cotización 1.0988 USD por euro).
+1 euro = Q8.4034 al 20/11/2026 (1.0988 USD por euro).
 ```
 
 ```json
@@ -54,29 +59,45 @@ Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988
   "fecha": "2026-11-20",
   "codigo": 24,
   "nombre": "Euro",
-  "quetzales_por_unidad": 8.403413628,
+  "nombre_singular": "euro",
+  "quetzales_por_unidad": 8.40341,
   "cotizacion_usd": 1.0988,
   "convencion": "usd_por_unidad",
   "compra": 1.0988,
   "venta": 1.0988,
-  "descontinuada": false
+  "descontinuada": false,
+  "referencia": "misma_fecha",
+  "fecha_referencia": "2026-11-20"
 }
 ```
 
 `tipo_cambio_moneda` con código 18:
+
+```text
+1 peso mexicano = Q0.4021 al 20/11/2026 (19.0201 pesos mexicanos por 1 USD).
+```
 
 ```json
 {
   "fecha": "2026-11-20",
   "codigo": 18,
   "nombre": "Pesos Mexicanos",
-  "quetzales_por_unidad": 0.40209094589408045,
+  "nombre_singular": "peso mexicano",
+  "quetzales_por_unidad": 0.402091,
   "cotizacion_usd": 19.0201,
   "convencion": "unidades_por_usd",
   "compra": 19.0155,
   "venta": 19.0201,
-  "descontinuada": false
+  "descontinuada": false,
+  "referencia": "misma_fecha",
+  "fecha_referencia": "2026-11-20"
 }
+```
+
+`convertir_monto` de 250 euros a quetzales:
+
+```text
+250 euros = Q2,100.85 (tipo de cambio del 20/11/2026)
 ```
 
 `monedas_disponibles` (recorte):
@@ -100,7 +121,7 @@ Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988
     "fin": "2026-11-23",
     "valor_inicial": 7.64489,
     "valor_final": 7.64059,
-    "variacion_pct": -0.0562467216663647,
+    "variacion_pct": -0.0562467,
     "minimo": { "fecha": "2026-11-23", "valor": 7.64059 },
     "maximo": { "fecha": "2026-11-20", "valor": 7.64781 },
     "registros_originales": 6
@@ -112,7 +133,7 @@ Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988
 }
 ```
 
-`tipo_cambio_moneda_rango` devuelve la misma forma de resumen y serie, más `codigo`, `nombre` y `convencion`. Los valores de la serie ya están en quetzales por unidad.
+`tipo_cambio_moneda_rango` devuelve la misma forma de resumen y serie, más `codigo`, `nombre`, `nombre_singular` y `convencion`. Cada punto trae `referencia` y `fecha_referencia`. Los valores de la serie ya están en quetzales por unidad.
 
 ## Requisitos
 
@@ -185,6 +206,7 @@ Para esta copia local, antes de publicarla:
 - ¿Cuál es el tipo de cambio del dólar hoy?
 - ¿Cómo ha estado el dólar desde el 1 de noviembre de 2026?
 - ¿Cuántos quetzales vale un euro?
+- ¿Cuántos quetzales son 250 euros?
 - ¿Qué monedas del catálogo ya no se publican?
 
 ## Cómo se comporta
