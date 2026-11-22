@@ -11,6 +11,7 @@ import {
   type Cotizacion,
   type CotizacionMoneda,
 } from "./banguat.js";
+import { formatoQuetzales, redondear, redondearDatos } from "./formato.js";
 import { acotarLineas, prepararSerie, type SerieLista } from "./serie.js";
 
 function fechaSchema(descripcion: string) {
@@ -106,7 +107,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
         const cotizacion = await client.tipoCambioHoy();
         const data = datosCotizacion(cotizacion);
         return ok(
-          `Tipo de cambio de referencia USD/GTQ del ${mostrarFecha(cotizacion.fecha)}: ${cotizacion.valor} quetzales por 1 dólar.`,
+          `Tipo de cambio de referencia USD/GTQ del ${mostrarFecha(cotizacion.fecha)}: ${redondear(cotizacion.valor)} quetzales por 1 dólar.`,
           data,
         );
       }),
@@ -241,9 +242,9 @@ function datosCotizacion(cotizacion: Cotizacion): {
 }
 
 function textoSerie(titulo: string, lista: SerieLista, aviso?: string): string {
-  const { resumen, serie, agrupacion: modo } = lista;
+  const { resumen, serie, agrupacion: modo } = redondearDatos(lista);
   const lineas = [
-    `${titulo} del ${mostrarFecha(resumen.inicio)} al ${mostrarFecha(resumen.fin)}. Agrupación ${modo}. ${resumen.registros_originales} registros. Variación ${resumen.variacion_pct.toFixed(2)}%.`,
+    `${titulo} del ${mostrarFecha(resumen.inicio)} al ${mostrarFecha(resumen.fin)}. Agrupación ${modo}. ${resumen.registros_originales} registros. Variación ${resumen.variacion_pct}%.`,
     `Mínimo ${resumen.minimo.valor} el ${mostrarFecha(resumen.minimo.fecha)}. Máximo ${resumen.maximo.valor} el ${mostrarFecha(resumen.maximo.fecha)}.`,
   ];
   if (aviso) lineas.push(aviso);
@@ -273,7 +274,7 @@ function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
 
 function textoMoneda(cotizacion: CotizacionMoneda): string {
   const frase = fraseCotizacion(cotizacion);
-  let base = `1 ${cotizacion.nombre} = Q${cotizacion.quetzales_por_unidad.toFixed(2)} al ${mostrarFecha(cotizacion.fecha)} (cotización ${frase}).`;
+  let base = `${etiquetaQuetzales(cotizacion.quetzales_por_unidad, cotizacion.nombre)} al ${mostrarFecha(cotizacion.fecha)} (cotización ${frase}).`;
   if (cotizacion.referencia === "tipo_cambio_dia") {
     base += " No había referencia USD de esa fecha; se usó la de TipoCambioDia.";
   }
@@ -283,12 +284,19 @@ function textoMoneda(cotizacion: CotizacionMoneda): string {
   return base;
 }
 
+function etiquetaQuetzales(q: number, nombre: string): string {
+  const texto = formatoQuetzales(q, nombre);
+  if (redondear(q) < 0.1) return texto;
+  return `1 ${nombre} = ${texto}`;
+}
+
 function fraseCotizacion(cotizacion: CotizacionMoneda): string {
+  const cotizacionUsd = redondear(cotizacion.cotizacion_usd);
   switch (cotizacion.convencion) {
     case "usd_por_unidad":
-      return `${cotizacion.cotizacion_usd} USD por ${cotizacion.nombre.toLowerCase()}`;
+      return `${cotizacionUsd} USD por ${cotizacion.nombre.toLowerCase()}`;
     case "unidades_por_usd":
-      return `${cotizacion.cotizacion_usd} ${cotizacion.nombre.toLowerCase()} por 1 USD`;
+      return `${cotizacionUsd} ${cotizacion.nombre.toLowerCase()} por 1 USD`;
     default: {
       const nunca: never = cotizacion.convencion;
       return nunca;
@@ -305,7 +313,7 @@ function mostrarFecha(iso: string): string {
 function ok(text: string, data: Record<string, unknown>): CallToolResult {
   return {
     content: [{ type: "text", text }],
-    structuredContent: data,
+    structuredContent: redondearDatos(data),
   };
 }
 

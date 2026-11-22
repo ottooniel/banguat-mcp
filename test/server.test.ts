@@ -175,7 +175,7 @@ describe("tools MCP", () => {
       convencion: "usd_por_unidad",
       cotizacion_usd: 1.0988,
     });
-    expect(JSON.stringify(euro.content)).toContain("1 Euro = Q8.40 al 20/11/2026");
+    expect(JSON.stringify(euro.content)).toContain("1 Euro = Q8.4034 al 20/11/2026");
     expect(JSON.stringify(euro.content)).toContain("1.0988 USD por euro");
 
     const conAviso = await conectar(
