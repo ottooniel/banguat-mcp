@@ -125,24 +125,32 @@ export function fechaGuatemala(now = new Date()): string {
   }).format(now);
 }
 
-export function fechaInicialError(iso: string, now = new Date()): string | undefined {
+export type FechaIso = {
+  iso: string;
+  year: number;
+  month: number;
+  day: number;
+};
+
+export function parsearFechaIso(iso: string): { ok: true; fecha: FechaIso } | { ok: false; mensaje: string } {
   const value = iso.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) {
-    return `Fecha inválida: "${iso}". Usa el formato YYYY-MM-DD.`;
-  }
+  if (!match) return { ok: false, mensaje: `Fecha inválida: "${iso}". Usa el formato YYYY-MM-DD.` };
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
   const utc = new Date(Date.UTC(year, month - 1, day));
-  const exists =
-    utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
-  if (!exists) {
-    return `Fecha inválida: "${value}" no existe en el calendario.`;
-  }
+  const exists = utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
+  if (!exists) return { ok: false, mensaje: `Fecha inválida: "${value}" no existe en el calendario.` };
+  return { ok: true, fecha: { iso: value, year, month, day } };
+}
+
+export function fechaInicialError(iso: string, now = new Date()): string | undefined {
+  const parsed = parsearFechaIso(iso);
+  if (!parsed.ok) return parsed.mensaje;
   const hoy = fechaGuatemala(now);
-  if (value > hoy) {
-    return `Fecha futura: "${value}". El servicio del Banguat solo acepta fechas hasta hoy (${hoy}, hora de Guatemala).`;
+  if (parsed.fecha.iso > hoy) {
+    return `Fecha futura: "${parsed.fecha.iso}". El servicio del Banguat solo acepta fechas hasta hoy (${hoy}, hora de Guatemala).`;
   }
   return undefined;
 }
@@ -168,8 +176,7 @@ export function fechaFinalError(inicial: string, final: string | undefined, now 
 export function toServiceDate(iso: string, now = new Date()): string {
   const message = fechaInicialError(iso, now);
   if (message) throw new BanguatError(message);
-  const [year, month, day] = iso.trim().split("-");
-  return `${day}/${month}/${year}`;
+  return aFormatoServicio(iso);
 }
 
 export function createBanguatClient(options: ClientOptions = {}): BanguatClient {
@@ -378,9 +385,9 @@ function elegirReferencia(fecha: string, puntos: PuntoSerie[]): ReferenciaUsd | 
 }
 
 function restarDias(iso: string, dias: number): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!match) throw new BanguatError(`Fecha inválida: "${iso}". Usa el formato YYYY-MM-DD.`);
-  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const parsed = parsearFechaIso(iso);
+  if (!parsed.ok) throw new BanguatError(parsed.mensaje);
+  const utc = new Date(Date.UTC(parsed.fecha.year, parsed.fecha.month - 1, parsed.fecha.day));
   utc.setUTCDate(utc.getUTCDate() - dias);
   return utc.toISOString().slice(0, 10);
 }
@@ -539,17 +546,10 @@ function parseVariable(body: unknown, codigo: number): { fecha: string; compra: 
 }
 
 function aFormatoServicio(iso: string): string {
-  const value = iso.trim();
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) throw new BanguatError(`Fecha inválida: "${iso}". Usa el formato YYYY-MM-DD.`);
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const utc = new Date(Date.UTC(year, month - 1, day));
-  const exists =
-    utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
-  if (!exists) throw new BanguatError(`Fecha inválida: "${value}" no existe en el calendario.`);
-  return `${match[3]}/${match[2]}/${match[1]}`;
+  const parsed = parsearFechaIso(iso);
+  if (!parsed.ok) throw new BanguatError(parsed.mensaje);
+  const { day, month, year } = parsed.fecha;
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 }
 
 function parseMonedas(body: unknown): MonedaDisponible[] {

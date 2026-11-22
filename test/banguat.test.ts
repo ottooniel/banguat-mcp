@@ -8,6 +8,7 @@ import {
   TTL_SERIE_MS,
   createBanguatClient,
   fechaInicialError,
+  parsearFechaIso,
   toServiceDate,
 } from "../src/banguat.js";
 
@@ -68,6 +69,8 @@ function xmlReferencia(fecha: string, venta: number): string {
 
 describe("fechas", () => {
   it("convierte YYYY-MM-DD al formato dd/mm/aaaa del servicio", () => {
+    expect(parsearFechaIso("2026-11-18")).toMatchObject({ ok: true, fecha: { day: 18, month: 11, year: 2026 } });
+    expect(parsearFechaIso("2026-02-31").ok).toBe(false);
     expect(toServiceDate("2026-11-18", HOY)).toBe("18/11/2026");
   });
 

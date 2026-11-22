@@ -111,7 +111,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     { name: "banguat", version: versionServidor() },
     {
       instructions:
-        "Consulta el tipo de cambio del web service SOAP del Banco de Guatemala. Los datos no son información oficial; la fuente oficial es https://banguat.gob.gt.",
+        "Indica siempre la fecha del dato y que la fuente oficial es banguat.gob.gt. Para montos usa convertir_monto.",
     },
   );
 
