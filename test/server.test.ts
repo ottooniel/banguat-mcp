@@ -106,6 +106,12 @@ describe("tools MCP", () => {
       venta: 1.0988,
     });
     expect(JSON.stringify(euro.content)).toContain("venta 1.0988");
+
+    const codigoInvalido = asResult(
+      await client.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: -2 } }),
+    );
+    expect(codigoInvalido.isError).toBe(true);
+    expect(JSON.stringify(codigoInvalido.content)).toMatch(/entero positivo/);
   });
 
   it("devuelve el mensaje del Banguat cuando el servicio falla", async () => {
