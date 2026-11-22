@@ -4,6 +4,7 @@ export type AgrupacionResuelta = Exclude<Agrupacion, "auto">;
 export type PuntoValor = {
   fecha: string;
   valor: number;
+  publicado_anticipado?: boolean;
 };
 
 export type PuntoAgregado = {
@@ -11,6 +12,7 @@ export type PuntoAgregado = {
   cierre: number;
   min: number;
   max: number;
+  publicado_anticipado: boolean;
 };
 
 export type ResumenSerie = {
@@ -54,6 +56,7 @@ export function prepararSerie(puntos: PuntoValor[], pedido: Agrupacion = "auto")
       cierre: cierre.valor,
       min: Math.min(...valores),
       max: Math.max(...valores),
+      publicado_anticipado: grupo.some((punto) => punto.publicado_anticipado === true),
     };
   });
   return { agrupacion, resumen: resumir(ordenados), serie };

@@ -16,7 +16,7 @@ describe("agrupación", () => {
     const lista = prepararSerie(diarios(62));
     expect(lista.agrupacion).toBe("diaria");
     expect(lista.serie).toHaveLength(62);
-    expect(lista.serie[0]).toMatchObject({ cierre: 7, min: 7, max: 7 });
+    expect(lista.serie[0]).toMatchObject({ cierre: 7, min: 7, max: 7, publicado_anticipado: false });
   });
 
   it("agrupa por semana dentro de un año y por mes si el tramo es más largo", () => {
@@ -30,6 +30,19 @@ describe("agrupación", () => {
     expect(larga.agrupacion).toBe("mensual");
     expect(larga.resumen.registros_originales).toBe(400);
     expect(larga.serie.length).toBeLessThan(20);
+  });
+
+  it("arrastra el punto publicado por adelantado al periodo agregado", () => {
+    const lista = prepararSerie(
+      [
+        { fecha: "2026-11-22", valor: 7.6, publicado_anticipado: false },
+        { fecha: "2026-11-23", valor: 7.5, publicado_anticipado: true },
+      ],
+      "mensual",
+    );
+    expect(lista.serie).toEqual([
+      { fecha: "2026-11-23", cierre: 7.5, min: 7.5, max: 7.6, publicado_anticipado: true },
+    ]);
   });
 
   it("respeta una agrupación pedida y resume la serie original", () => {
