@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BanguatError,
@@ -9,85 +12,16 @@ import {
 } from "../src/banguat.js";
 
 const HOY = new Date("2026-11-22T18:00:00.000Z");
+const fixture = (nombre: string) =>
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "fixtures", nombre), "utf8");
 
-const XML_HOY = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <TipoCambioDiaResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
-      <TipoCambioDiaResult>
-        <CambioDolar><VarDolar><fecha>22/11/2026</fecha><referencia>7.64781</referencia></VarDolar></CambioDolar>
-        <TotalItems>1</TotalItems>
-      </TipoCambioDiaResult>
-    </TipoCambioDiaResponse>
-  </soap:Body>
-</soap:Envelope>`;
-
-const XML_SERIE = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <TipoCambioFechaInicialResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
-      <TipoCambioFechaInicialResult>
-        <Vars>
-          <Var><moneda>2</moneda><fecha>18/11/2026</fecha><venta>7.64489</venta><compra>7.64489</compra></Var>
-          <Var><moneda>2</moneda><fecha>19/11/2026</fecha><venta>7.64682</venta><compra>7.64000</compra></Var>
-        </Vars>
-        <TotalItems>2</TotalItems>
-      </TipoCambioFechaInicialResult>
-    </TipoCambioFechaInicialResponse>
-  </soap:Body>
-</soap:Envelope>`;
-
-const XML_MONEDAS = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <VariablesDisponiblesResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
-      <VariablesDisponiblesResult>
-        <Variables>
-          <Variable><moneda>2</moneda><descripcion>Dólares de EE.UU.</descripcion></Variable>
-          <Variable><moneda>18</moneda><descripcion>Pesos Mexicanos</descripcion></Variable>
-          <Variable><moneda>24</moneda><descripcion>Euro</descripcion></Variable>
-        </Variables>
-        <TotalItems>2</TotalItems>
-      </VariablesDisponiblesResult>
-    </VariablesDisponiblesResponse>
-  </soap:Body>
-</soap:Envelope>`;
-
-const XML_EURO = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <VariablesResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
-      <VariablesResult>
-        <CambioDia><Var><moneda>24</moneda><fecha>20/11/2026</fecha><venta>1.0988</venta><compra>1.0900</compra></Var></CambioDia>
-        <TotalItems>1</TotalItems>
-      </VariablesResult>
-    </VariablesResponse>
-  </soap:Body>
-</soap:Envelope>`;
-
-const XML_PESO = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <VariablesResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
-      <VariablesResult>
-        <CambioDia><Var><moneda>18</moneda><fecha>20/11/2026</fecha><venta>18.5</venta><compra>18.4</compra></Var></CambioDia>
-        <TotalItems>1</TotalItems>
-      </VariablesResult>
-    </VariablesResponse>
-  </soap:Body>
-</soap:Envelope>`;
-
-const XML_RANGO = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <TipoCambioRangoResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
-      <TipoCambioRangoResult>
-        <Vars><Var><moneda>2</moneda><fecha>20/11/2026</fecha><venta>7.64781</venta><compra>7.64781</compra></Var></Vars>
-        <TotalItems>1</TotalItems>
-      </TipoCambioRangoResult>
-    </TipoCambioRangoResponse>
-  </soap:Body>
-</soap:Envelope>`;
+const XML_HOY = fixture("tipo-cambio-dia.xml");
+const XML_SERIE = fixture("tipo-cambio-fecha-inicial.xml");
+const XML_RANGO = fixture("tipo-cambio-rango.xml");
+const XML_MONEDAS = fixture("variables-disponibles.xml");
+const XML_EURO = fixture("variables-24.xml");
+const XML_PESO = fixture("variables-18.xml");
+const XML_FRANCO = fixture("variables-4.xml");
 
 const XML_RANGO_VACIO = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
@@ -161,10 +95,14 @@ describe("cliente SOAP", () => {
       now: () => HOY.getTime(),
     });
 
-    await expect(client.tipoCambioDesde("2026-11-18")).resolves.toEqual([
-      { fecha: "2026-11-18", valor: 7.64489, moneda: "USD", compra: 7.64489, venta: 7.64489, publicado_anticipado: false },
-      { fecha: "2026-11-19", valor: 7.64682, moneda: "USD", compra: 7.64, venta: 7.64682, publicado_anticipado: false },
-    ]);
+    const serie = await client.tipoCambioDesde("2026-11-18");
+    expect(serie[0]).toMatchObject({
+      fecha: "2026-11-18",
+      valor: 7.64489,
+      venta: 7.64489,
+      publicado_anticipado: false,
+    });
+    expect(serie.some((punto) => punto.fecha === "2026-11-22")).toBe(true);
     expect(seen[0]).toContain("<fechainit>18/11/2026</fechainit>");
     expect(seen[0]).toContain("TipoCambioFechaInicial");
 
@@ -181,28 +119,29 @@ describe("cliente SOAP", () => {
     await expect(conFin.tipoCambioDesde("2026-11-20", "2026-11-18")).rejects.toThrow(/anterior/);
   });
 
-  it("marca como publicado por adelantado un punto posterior a hoy", async () => {
-    const xml = XML_SERIE.replace(
-      "</Vars>",
-      `<Var><moneda>2</moneda><fecha>23/11/2026</fecha><venta>7.64059</venta><compra>7.64059</compra></Var></Vars>`,
-    );
+  it("marca como publicado por adelantado el día hábil que el Banguat ya publicó", async () => {
     const client = createBanguatClient({
-      fetch: async () => xmlResponse(xml),
+      fetch: async () => xmlResponse(XML_SERIE),
       now: () => HOY.getTime(),
     });
     const serie = await client.tipoCambioDesde("2026-11-18");
-    expect(serie.find((punto) => punto.fecha === "2026-11-22")).toBeUndefined();
-    expect(serie.find((punto) => punto.fecha === "2026-11-23")?.publicado_anticipado).toBe(true);
-    expect(serie.find((punto) => punto.fecha === "2026-11-19")?.publicado_anticipado).toBe(false);
+    expect(serie.find((punto) => punto.fecha === "2026-11-23")).toMatchObject({
+      valor: 7.64059,
+      publicado_anticipado: true,
+    });
+    expect(serie.find((punto) => punto.fecha === "2026-11-22")?.publicado_anticipado).toBe(false);
   });
 
   it("lista las monedas del catálogo", async () => {
     const client = createBanguatClient({ fetch: async () => xmlResponse(XML_MONEDAS) });
-    await expect(client.monedasDisponibles()).resolves.toEqual([
-      { codigo: 2, descripcion: "Dólares de EE.UU." },
-      { codigo: 18, descripcion: "Pesos Mexicanos" },
-      { codigo: 24, descripcion: "Euro" },
-    ]);
+    const monedas = await client.monedasDisponibles();
+    expect(monedas).toEqual(
+      expect.arrayContaining([
+        { codigo: 4, descripcion: "Francos Belgas" },
+        { codigo: 18, descripcion: "Pesos Mexicanos" },
+        { codigo: 24, descripcion: "Euro" },
+      ]),
+    );
   });
 
   it("convierte el euro y el peso a quetzales con la referencia de la misma fecha", async () => {
@@ -227,7 +166,7 @@ describe("cliente SOAP", () => {
       nombre: "Euro",
       cotizacion_usd: 1.0988,
       convencion: "usd_por_unidad",
-      compra: 1.09,
+      compra: 1.0988,
       venta: 1.0988,
       referencia: "misma_fecha",
     });
@@ -236,7 +175,8 @@ describe("cliente SOAP", () => {
 
     const peso = await client.tipoCambioMoneda(18);
     expect(peso.convencion).toBe("unidades_por_usd");
-    expect(peso.quetzales_por_unidad).toBeCloseTo(7.64781 / 18.5, 8);
+    expect(peso.quetzales_por_unidad).toBeCloseTo(7.64781 / 19.0201, 8);
+    expect(peso.compra).toBeCloseTo(19.0155, 8);
     expect(peso.nombre).toBe("Pesos Mexicanos");
   });
 
@@ -275,20 +215,26 @@ describe("cliente SOAP", () => {
   });
 
   it("marca descontinuada cuando el último dato tiene más de 30 días", async () => {
-    const vieja = XML_EURO.replace("20/11/2026", "31/12/2001");
     const client = createBanguatClient({
       fetch: async (_url, init) => {
         const body = String(init?.body);
         if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
         if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO_VACIO);
         if (body.includes("TipoCambioDia")) return xmlResponse(XML_HOY);
-        return xmlResponse(vieja);
+        return xmlResponse(XML_FRANCO);
       },
       now: () => HOY.getTime(),
     });
-    const euro = await client.tipoCambioMoneda(24);
-    expect(euro.descontinuada).toBe(true);
-    expect(euro.fecha).toBe("2001-12-31");
+    const franco = await client.tipoCambioMoneda(4);
+    expect(franco).toMatchObject({
+      fecha: "2001-12-31",
+      nombre: "Francos Belgas",
+      convencion: "unidades_por_usd",
+      cotizacion_usd: 45.453,
+      descontinuada: true,
+      referencia: "tipo_cambio_dia",
+    });
+    expect(franco.quetzales_por_unidad).toBeCloseTo(7.64781 / 45.453, 8);
   });
 
   it("explica cuando el código no trae cotización", async () => {
