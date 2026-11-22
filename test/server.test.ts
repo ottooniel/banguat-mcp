@@ -260,11 +260,26 @@ describe("tools MCP", () => {
       monto: 250,
       codigo: 24,
       nombre: "Euro",
-      resultado: Number((250 * tasa).toPrecision(6)),
+      resultado: Math.round(250 * tasa * 100) / 100,
+      quetzales_por_unidad: Number(tasa.toPrecision(6)),
       fecha: "2026-11-20",
       descontinuada: false,
     });
     expect(JSON.stringify(euros.content)).toContain("250 euros = Q2,100.85 (tipo de cambio del 20/11/2026)");
+
+    const grande = asResult(
+      await client.callTool({
+        name: "convertir_monto",
+        arguments: { monto: 1234567.89, codigo: 24, direccion: "a_quetzales" },
+      }),
+    );
+    const resultadoGrande = Math.round(1234567.89 * tasa * 100) / 100;
+    expect(grande.structuredContent).toMatchObject({
+      monto: 1234567.89,
+      resultado: resultadoGrande,
+      quetzales_por_unidad: Number(tasa.toPrecision(6)),
+    });
+    expect(JSON.stringify(grande.content)).toContain(`1,234,567.89 euros = Q${new Intl.NumberFormat("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(resultadoGrande)}`);
 
     const cero = asResult(
       await client.callTool({

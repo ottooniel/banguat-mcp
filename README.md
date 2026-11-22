@@ -38,7 +38,7 @@ Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988
 
 ## Precisión y redondeo
 
-Todo número que sale en el texto o en los datos estructurados se redondea a 6 cifras significativas. En el texto de una cotización, si el quetzal por unidad es 0.1 o más se muestra con 4 decimales (`Q8.4034`). Si es menor, se expresa por 100 unidades (`100 Pesos Colombianos = Q0.2236`) para no mostrar `Q0.00`. `convertir_monto` formatea el resultado con `Intl.NumberFormat("es-GT")`, por ejemplo `250 euros = Q2,100.85`.
+Todo número que sale en el texto o en los datos estructurados se redondea a 6 cifras significativas, salvo el monto y el resultado de `convertir_monto`. El monto se devuelve tal como lo mandó el usuario. El resultado se calcula con la tasa sin redondear y se redondea a 2 decimales (`Math.round(x * 100) / 100`). `quetzales_por_unidad` sigue con 6 cifras significativas. En el texto de una cotización, si el quetzal por unidad es 0.1 o más se muestra con 4 decimales (`Q8.4034`). Si es menor, se expresa por 100 unidades (`100 Pesos Colombianos = Q0.2236`) para no mostrar `Q0.00`. `convertir_monto` formatea el resultado con `Intl.NumberFormat("es-GT")`, por ejemplo `250 euros = Q2,100.85`.
 
 ## Ejemplos de respuesta
 

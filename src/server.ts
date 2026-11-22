@@ -283,16 +283,9 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
             `${cotizacion.nombre} está descontinuada: el último dato es del ${mostrarFecha(cotizacion.fecha)}. No se convierte con un tipo de cambio viejo.`,
           );
         }
-        const resultado = montoConvertido(cantidad, cotizacion.quetzales_por_unidad, sentido);
-        return ok(textoConversion(cantidad, resultado, cotizacion, sentido), {
-          monto: cantidad,
-          codigo,
-          nombre: cotizacion.nombre,
-          resultado,
-          quetzales_por_unidad: cotizacion.quetzales_por_unidad,
-          fecha: cotizacion.fecha,
-          descontinuada: cotizacion.descontinuada,
-        });
+        const bruto = montoConvertido(cantidad, cotizacion.quetzales_por_unidad, sentido);
+        const resultado = Math.round(bruto * 100) / 100;
+        return ok(textoConversion(cantidad, resultado, cotizacion, sentido), datosConversion(cantidad, codigo, resultado, cotizacion), false);
       }),
   );
 
@@ -397,6 +390,30 @@ function fraseCotizacion(cotizacion: CotizacionMoneda): string {
   }
 }
 
+function datosConversion(
+  cantidad: number,
+  codigo: number,
+  resultado: number,
+  cotizacion: CotizacionMoneda,
+): Record<string, unknown> {
+  const resto = redondearDatos({
+    codigo,
+    nombre: cotizacion.nombre,
+    quetzales_por_unidad: cotizacion.quetzales_por_unidad,
+    fecha: cotizacion.fecha,
+    descontinuada: cotizacion.descontinuada,
+  });
+  return {
+    monto: cantidad,
+    codigo: resto.codigo,
+    nombre: resto.nombre,
+    resultado,
+    quetzales_por_unidad: resto.quetzales_por_unidad,
+    fecha: resto.fecha,
+    descontinuada: resto.descontinuada,
+  };
+}
+
 function textoConversion(
   cantidad: number,
   resultado: number,
@@ -408,9 +425,9 @@ function textoConversion(
   const plural = nombrePlural(cotizacion.codigo, cotizacion.nombre);
   switch (sentido) {
     case "a_quetzales":
-      return `${formatoCantidad(cantidad)} ${cantidad === 1 ? singular : plural} = ${formatoGtq(resultado)} (${fecha})`;
+      return `${formatoMonto(cantidad)} ${cantidad === 1 ? singular : plural} = Q${formatoCentavos(resultado)} (${fecha})`;
     case "desde_quetzales":
-      return `${formatoGtq(cantidad)} = ${formatoCantidad(resultado)} ${redondear(resultado) === 1 ? singular : plural} (${fecha})`;
+      return `Q${formatoMonto(cantidad)} = ${formatoCentavos(resultado)} ${resultado === 1 ? singular : plural} (${fecha})`;
     default: {
       const nunca: never = sentido;
       return nunca;
@@ -418,18 +435,12 @@ function textoConversion(
   }
 }
 
-function formatoGtq(n: number): string {
-  const valor = redondear(n);
-  const decimales = Math.abs(valor) >= 0.1 ? 2 : 6;
-  const texto = new Intl.NumberFormat("es-GT", {
-    minimumFractionDigits: Math.min(2, decimales),
-    maximumFractionDigits: decimales,
-  }).format(valor);
-  return `Q${texto}`;
+function formatoMonto(n: number): string {
+  return new Intl.NumberFormat("es-GT", { maximumFractionDigits: 20 }).format(n);
 }
 
-function formatoCantidad(n: number): string {
-  return new Intl.NumberFormat("es-GT", { maximumFractionDigits: 6 }).format(redondear(n));
+function formatoCentavos(n: number): string {
+  return new Intl.NumberFormat("es-GT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
 function mostrarFecha(iso: string): string {
@@ -438,10 +449,10 @@ function mostrarFecha(iso: string): string {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
-function ok(text: string, data: Record<string, unknown>): CallToolResult {
+function ok(text: string, data: Record<string, unknown>, aplicarRedondeo = true): CallToolResult {
   return {
     content: [{ type: "text", text }],
-    structuredContent: redondearDatos(data),
+    structuredContent: aplicarRedondeo ? redondearDatos(data) : data,
   };
 }
 
