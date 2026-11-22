@@ -16,6 +16,8 @@ Servidor [MCP](https://modelcontextprotocol.io) que consulta el tipo de cambio p
 | `tipo_cambio_moneda_rango` | `TipoCambioRangoMoneda` | Serie de esa moneda, ya convertida a quetzales |
 | `convertir_monto` | la cotización de `tipo_cambio_moneda` | Un monto pasado a quetzales o desde quetzales |
 
+Las instrucciones para un agente están en [`skills/banguat-tipo-de-cambio/SKILL.md`](skills/banguat-tipo-de-cambio/SKILL.md).
+
 `tipo_cambio_desde` y `tipo_cambio_moneda_rango` aceptan `agrupacion`: `auto` (diaria hasta 62 puntos, semanal hasta cerca de un año, mensual si el tramo es más largo), `diaria`, `semanal` o `mensual`. Cada punto agregado trae cierre, mínimo y máximo. El resumen incluye inicio, fin, variación, mínimo, máximo y cuántos registros diarios había.
 
 ## Unidades
