@@ -5,6 +5,8 @@ export type PuntoValor = {
   fecha: string;
   valor: number;
   publicado_anticipado?: boolean;
+  referencia?: "misma_fecha" | "fecha_anterior";
+  fecha_referencia?: string;
 };
 
 export type PuntoAgregado = {
@@ -13,6 +15,8 @@ export type PuntoAgregado = {
   min: number;
   max: number;
   publicado_anticipado: boolean;
+  referencia?: "misma_fecha" | "fecha_anterior";
+  fecha_referencia?: string;
 };
 
 export type ResumenSerie = {
@@ -51,13 +55,18 @@ export function prepararSerie(puntos: PuntoValor[], pedido: Agrupacion = "auto")
     const cierre = grupo[grupo.length - 1];
     const valores = grupo.map((punto) => punto.valor);
     if (!cierre) throw new Error("No hay puntos para armar la serie.");
-    return {
+    const agregado: PuntoAgregado = {
       fecha: cierre.fecha,
       cierre: cierre.valor,
       min: Math.min(...valores),
       max: Math.max(...valores),
       publicado_anticipado: grupo.some((punto) => punto.publicado_anticipado === true),
     };
+    if (cierre.referencia && cierre.fecha_referencia) {
+      agregado.referencia = cierre.referencia;
+      agregado.fecha_referencia = cierre.fecha_referencia;
+    }
+    return agregado;
   });
   return { agrupacion, resumen: resumir(ordenados), serie };
 }

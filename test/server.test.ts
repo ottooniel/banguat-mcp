@@ -23,6 +23,7 @@ function cotizacionMoneda(codigo: number): CotizacionMoneda {
       venta: 7.64781,
       descontinuada: false,
       referencia: "misma_fecha",
+      fecha_referencia: XML_FECHA,
     };
   }
   return {
@@ -36,6 +37,7 @@ function cotizacionMoneda(codigo: number): CotizacionMoneda {
     venta: 1.0988,
     descontinuada: false,
     referencia: "misma_fecha",
+    fecha_referencia: "2026-11-20",
   };
 }
 
@@ -56,6 +58,8 @@ function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
         compra: 1.09,
         venta: 1.1,
         referencia: "misma_fecha",
+        fecha_referencia: "2026-11-18",
+        publicado_anticipado: false,
       },
       {
         fecha: "2026-11-20",
@@ -66,6 +70,7 @@ function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
         compra: 1.09,
         venta: 1.1,
         referencia: "misma_fecha",
+        fecha_referencia: "2026-11-20",
         publicado_anticipado: false,
       },
     ],
@@ -192,6 +197,7 @@ describe("tools MCP", () => {
           venta: 19.0201,
           descontinuada: false,
           referencia: "misma_fecha",
+          fecha_referencia: "2026-11-20",
         }),
       }),
     );
@@ -200,6 +206,21 @@ describe("tools MCP", () => {
     expect(JSON.stringify(mexicano.content)).toContain(
       "1 peso mexicano = Q0.4021 al 20/11/2026 (19.0201 pesos mexicanos por 1 USD)",
     );
+
+    const rango = asResult(
+      await client.callTool({
+        name: "tipo_cambio_moneda_rango",
+        arguments: { codigo: 24, fecha_inicial: "2026-11-18", fecha_final: "2026-11-20" },
+      }),
+    );
+    expect(rango.structuredContent).toMatchObject({
+      nombre: "Euro",
+      nombre_singular: "euro",
+      serie: [
+        { fecha: "2026-11-18", referencia: "misma_fecha", fecha_referencia: "2026-11-18" },
+        { fecha: "2026-11-20", referencia: "misma_fecha", fecha_referencia: "2026-11-20" },
+      ],
+    });
 
     const conAviso = await conectar(
       clientFalso({

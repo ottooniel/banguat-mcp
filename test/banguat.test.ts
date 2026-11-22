@@ -52,6 +52,20 @@ function xmlResponse(xml: string, status = 200): Response {
   return new Response(xml, { status, headers: { "Content-Type": "text/xml" } });
 }
 
+function xmlReferencia(fecha: string, venta: number): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <TipoCambioRangoResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
+      <TipoCambioRangoResult>
+        <Vars><Var><moneda>2</moneda><fecha>${fecha}</fecha><venta>${venta}</venta><compra>${venta}</compra></Var></Vars>
+        <TotalItems>1</TotalItems>
+      </TipoCambioRangoResult>
+    </TipoCambioRangoResponse>
+  </soap:Body>
+</soap:Envelope>`;
+}
+
 describe("fechas", () => {
   it("convierte YYYY-MM-DD al formato dd/mm/aaaa del servicio", () => {
     expect(toServiceDate("2026-11-18", HOY)).toBe("18/11/2026");
@@ -169,6 +183,7 @@ describe("cliente SOAP", () => {
       compra: 1.0988,
       venta: 1.0988,
       referencia: "misma_fecha",
+      fecha_referencia: "2026-11-20",
     });
     expect(euro.quetzales_por_unidad).toBeCloseTo(1.0988 * 7.64781, 8);
     expect(llamadas.some((body) => body.includes("TipoCambioRango") && body.includes("20/11/2026"))).toBe(true);
@@ -180,20 +195,41 @@ describe("cliente SOAP", () => {
     expect(peso.nombre).toBe("Pesos Mexicanos");
   });
 
-  it("usa TipoCambioDia si no hay referencia USD de la fecha de la moneda", async () => {
+  it("usa la referencia USD del día anterior y nunca la de hoy", async () => {
+    const llamadas: string[] = [];
     const client = createBanguatClient({
       fetch: async (_url, init) => {
         const body = String(init?.body);
+        llamadas.push(body);
         if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
-        if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO_VACIO);
+        if (body.includes("<fechainit>20/11/2026</fechainit>") && body.includes("<fechafin>20/11/2026</fechafin>")) {
+          return xmlResponse(XML_RANGO_VACIO);
+        }
+        if (body.includes("TipoCambioRango")) return xmlResponse(xmlReferencia("19/11/2026", 7.64682));
         if (body.includes("TipoCambioDia")) return xmlResponse(XML_HOY);
         return xmlResponse(XML_EURO);
       },
       now: () => HOY.getTime(),
     });
     const euro = await client.tipoCambioMoneda(24);
-    expect(euro.referencia).toBe("tipo_cambio_dia");
-    expect(euro.quetzales_por_unidad).toBeCloseTo(1.0988 * 7.64781, 8);
+    expect(euro.referencia).toBe("fecha_anterior");
+    expect(euro.fecha_referencia).toBe("2026-11-19");
+    expect(euro.quetzales_por_unidad).toBeCloseTo(1.0988 * 7.64682, 8);
+    expect(llamadas.some((body) => body.includes("TipoCambioDia"))).toBe(false);
+    expect(llamadas.some((body) => body.includes("<fechainit>13/11/2026</fechainit>"))).toBe(true);
+  });
+
+  it("falla si no hay referencia USD ni en los 7 días anteriores", async () => {
+    const client = createBanguatClient({
+      fetch: async (_url, init) => {
+        const body = String(init?.body);
+        if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
+        if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO_VACIO);
+        return xmlResponse(XML_EURO);
+      },
+      now: () => HOY.getTime(),
+    });
+    await expect(client.tipoCambioMoneda(24)).rejects.toThrow(/No hay referencia USD para el 2026-11-20/);
   });
 
   it("rechaza el quetzal y resuelve el dólar con la referencia del día", async () => {
@@ -215,11 +251,14 @@ describe("cliente SOAP", () => {
   });
 
   it("marca descontinuada cuando el último dato tiene más de 30 días", async () => {
+    const llamadas: string[] = [];
     const client = createBanguatClient({
       fetch: async (_url, init) => {
         const body = String(init?.body);
+        llamadas.push(body);
         if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
-        if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO_VACIO);
+        if (body.includes("<fechainit>31/12/2001</fechainit>")) return xmlResponse(XML_RANGO_VACIO);
+        if (body.includes("TipoCambioRango")) return xmlResponse(xmlReferencia("28/12/2001", 7.8));
         if (body.includes("TipoCambioDia")) return xmlResponse(XML_HOY);
         return xmlResponse(XML_FRANCO);
       },
@@ -232,9 +271,11 @@ describe("cliente SOAP", () => {
       convencion: "unidades_por_usd",
       cotizacion_usd: 45.453,
       descontinuada: true,
-      referencia: "tipo_cambio_dia",
+      referencia: "fecha_anterior",
+      fecha_referencia: "2001-12-28",
     });
-    expect(franco.quetzales_por_unidad).toBeCloseTo(7.64781 / 45.453, 8);
+    expect(franco.quetzales_por_unidad).toBeCloseTo(7.8 / 45.453, 8);
+    expect(llamadas.some((body) => body.includes("TipoCambioDia"))).toBe(false);
   });
 
   it("explica cuando el código no trae cotización", async () => {

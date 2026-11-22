@@ -32,6 +32,31 @@ describe("agrupación", () => {
     expect(larga.serie.length).toBeLessThan(20);
   });
 
+  it("conserva la referencia USD del cierre al agrupar", () => {
+    const lista = prepararSerie(
+      [
+        {
+          fecha: "2026-11-18",
+          valor: 0.4,
+          referencia: "misma_fecha",
+          fecha_referencia: "2026-11-18",
+        },
+        {
+          fecha: "2026-11-20",
+          valor: 0.41,
+          referencia: "fecha_anterior",
+          fecha_referencia: "2026-11-19",
+        },
+      ],
+      "mensual",
+    );
+    expect(lista.serie[0]).toMatchObject({
+      fecha: "2026-11-20",
+      referencia: "fecha_anterior",
+      fecha_referencia: "2026-11-19",
+    });
+  });
+
   it("arrastra el punto publicado por adelantado al periodo agregado", () => {
     const lista = prepararSerie(
       [

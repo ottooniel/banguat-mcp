@@ -23,6 +23,13 @@ export type Cotizacion = {
 };
 
 export type Convencion = "usd_por_unidad" | "unidades_por_usd";
+export type FuenteReferencia = "misma_fecha" | "fecha_anterior";
+
+export type ReferenciaUsd = {
+  valor: number;
+  fuente: FuenteReferencia;
+  fecha: string;
+};
 
 export type CotizacionMoneda = {
   fecha: string;
@@ -34,7 +41,8 @@ export type CotizacionMoneda = {
   compra: number;
   venta: number;
   descontinuada: boolean;
-  referencia: "misma_fecha" | "tipo_cambio_dia";
+  referencia: FuenteReferencia;
+  fecha_referencia: string;
 };
 
 const USD_POR_UNIDAD = new Set([9, 24, 26]);
@@ -76,7 +84,8 @@ export type PuntoMoneda = {
   convencion: Convencion;
   compra: number;
   venta: number;
-  referencia: "misma_fecha" | "tipo_cambio_dia";
+  referencia: FuenteReferencia;
+  fecha_referencia: string;
   publicado_anticipado: boolean;
 };
 
@@ -196,9 +205,9 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
     const error =
       fechaInicialError(fechaInicialIso, reloj()) ?? fechaFinalError(fechaInicialIso, fechaFinalIso, reloj());
     if (error) throw new BanguatError(error);
-    const fechainit = toServiceDate(fechaInicialIso, reloj());
-    const hoyGt = fechaGuatemala(reloj());
     if (!fechaFinalIso) {
+      const fechainit = toServiceDate(fechaInicialIso, reloj());
+      const hoyGt = fechaGuatemala(reloj());
       return remember(cache, inflight, now, `serie:${fechaInicialIso}:hoy:${diaClave()}`, TTL_SERIE_MS, async () =>
         exigirPuntos(
           parseSerieDe(
@@ -210,15 +219,18 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
         ),
       );
     }
-    const fechafin = toServiceDate(fechaFinalIso, reloj());
-    return remember(cache, inflight, now, `serie:${fechaInicialIso}:${fechaFinalIso}:${diaClave()}`, TTL_SERIE_MS, async () =>
-      exigirPuntos(
-        parseSerieDe(
-          await soap(fetchImpl, "TipoCambioRango", { fechainit, fechafin }),
-          "TipoCambioRangoResponse",
-          "TipoCambioRangoResult",
-          hoyGt,
-        ),
+    return exigirPuntos(await rangoUsd(fechaInicialIso, fechaFinalIso));
+  }
+
+  async function rangoUsd(desde: string, hasta: string): Promise<PuntoSerie[]> {
+    const fechainit = aFormatoServicio(desde);
+    const fechafin = aFormatoServicio(hasta);
+    return remember(cache, inflight, now, `serie:${desde}:${hasta}:${diaClave()}`, TTL_SERIE_MS, async () =>
+      parseSerieDe(
+        await soap(fetchImpl, "TipoCambioRango", { fechainit, fechafin }),
+        "TipoCambioRangoResponse",
+        "TipoCambioRangoResult",
+        fechaGuatemala(reloj()),
       ),
     );
   }
@@ -253,6 +265,7 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
           compra: punto.compra,
           venta: punto.venta,
           referencia: "misma_fecha" as const,
+          fecha_referencia: punto.fecha,
           publicado_anticipado: punto.publicado_anticipado,
         }));
       }
@@ -264,30 +277,20 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
       if (crudas.length === 0) {
         throw new BanguatError(`El Banguat no devolvió registros de la moneda ${codigo} en ese rango.`);
       }
-      const referenciaPorFecha = new Map(dolares.map((punto) => [punto.fecha, punto.valor]));
-      let respaldo: number | undefined;
       const convencion = convencionDe(codigo);
       const puntos: PuntoMoneda[] = [];
       for (const cruda of crudas) {
-        const deLaFecha = referenciaPorFecha.get(cruda.fecha);
-        let referencia = deLaFecha;
-        let fuente: "misma_fecha" | "tipo_cambio_dia" = "misma_fecha";
-        if (referencia === undefined) {
-          respaldo ??= (await remember(cache, inflight, now, `hoy:${diaClave()}`, TTL_HOY_MS, async () =>
-            parseHoy(await soap(fetchImpl, "TipoCambioDia", {})),
-          )).valor;
-          referencia = respaldo;
-          fuente = "tipo_cambio_dia";
-        }
+        const referencia = await referenciaUsd(cruda.fecha, dolares);
         puntos.push({
           fecha: cruda.fecha,
-          valor: aQuetzales(convencion, cruda.venta, referencia),
+          valor: aQuetzales(convencion, cruda.venta, referencia.valor),
           codigo,
           nombre,
           convencion,
           compra: cruda.compra,
           venta: cruda.venta,
-          referencia: fuente,
+          referencia: referencia.fuente,
+          fecha_referencia: referencia.fecha,
           publicado_anticipado: cruda.fecha > fechaGuatemala(reloj()),
         });
       }
@@ -316,12 +319,13 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
           convencion: "usd_por_unidad",
           compra: hoy.valor,
           venta: hoy.valor,
-        descontinuada: estaDescontinuada(hoy.fecha, new Date(now())),
-        referencia: "misma_fecha",
-      };
-    }
+          descontinuada: estaDescontinuada(hoy.fecha, new Date(now())),
+          referencia: "misma_fecha",
+          fecha_referencia: hoy.fecha,
+        };
+      }
 
-    const cruda = parseVariable(await soap(fetchImpl, "Variables", { variable: codigo }), codigo);
+      const cruda = parseVariable(await soap(fetchImpl, "Variables", { variable: codigo }), codigo);
       const referencia = await referenciaUsd(cruda.fecha);
       const convencion = convencionDe(codigo);
       const nombreCotizacion = await nombreMoneda(codigo);
@@ -336,6 +340,7 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
         venta: cruda.venta,
         descontinuada: estaDescontinuada(cruda.fecha, new Date(now())),
         referencia: referencia.fuente,
+        fecha_referencia: referencia.fecha,
       };
     });
   }
@@ -347,23 +352,37 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
     return monedas.find((moneda) => moneda.codigo === codigo)?.descripcion ?? `Moneda ${codigo}`;
   }
 
-  async function referenciaUsd(fecha: string): Promise<{ valor: number; fuente: "misma_fecha" | "tipo_cambio_dia" }> {
-    const fechainit = aFormatoServicio(fecha);
-    const puntos = await remember(cache, inflight, now, `serie:${fecha}:${fecha}:${diaClave()}`, TTL_SERIE_MS, async () =>
-      parseSerieDe(
-        await soap(fetchImpl, "TipoCambioRango", { fechainit, fechafin: fechainit }),
-        "TipoCambioRangoResponse",
-        "TipoCambioRangoResult",
-        fechaGuatemala(reloj()),
-      ),
-    );
-    const misma = puntos.find((punto) => punto.fecha === fecha);
-    if (misma) return { valor: misma.valor, fuente: "misma_fecha" };
-    const hoy = await remember(cache, inflight, now, `hoy:${diaClave()}`, TTL_HOY_MS, async () =>
-      parseHoy(await soap(fetchImpl, "TipoCambioDia", {})),
-    );
-    return { valor: hoy.valor, fuente: "tipo_cambio_dia" };
+  async function referenciaUsd(fecha: string, conocidos: PuntoSerie[] = []): Promise<ReferenciaUsd> {
+    const conocida = elegirReferencia(fecha, conocidos);
+    if (conocida) return conocida;
+    const exacta = elegirReferencia(fecha, await rangoUsd(fecha, fecha));
+    if (exacta) return exacta;
+    const desde = restarDias(fecha, 7);
+    const hallada = elegirReferencia(fecha, await rangoUsd(desde, fecha));
+    if (!hallada) {
+      throw new BanguatError(`No hay referencia USD para el ${fecha} ni en los 7 días anteriores.`);
+    }
+    return hallada;
   }
+}
+
+function elegirReferencia(fecha: string, puntos: PuntoSerie[]): ReferenciaUsd | undefined {
+  const misma = puntos.find((punto) => punto.fecha === fecha);
+  if (misma) return { valor: misma.valor, fuente: "misma_fecha", fecha: misma.fecha };
+  const desde = restarDias(fecha, 7);
+  const previa = puntos
+    .filter((punto) => punto.fecha < fecha && punto.fecha >= desde)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+  if (!previa) return undefined;
+  return { valor: previa.valor, fuente: "fecha_anterior", fecha: previa.fecha };
+}
+
+function restarDias(iso: string, dias: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) throw new BanguatError(`Fecha inválida: "${iso}". Usa el formato YYYY-MM-DD.`);
+  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  utc.setUTCDate(utc.getUTCDate() - dias);
+  return utc.toISOString().slice(0, 10);
 }
 
 const CACHE_MAX = 200;

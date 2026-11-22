@@ -71,6 +71,8 @@ const monedaSchema = {
   compra: z.number(),
   venta: z.number(),
   descontinuada: z.boolean(),
+  referencia: z.enum(["misma_fecha", "fecha_anterior"]),
+  fecha_referencia: z.string().describe("Fecha de la referencia USD usada para convertir a quetzales"),
 };
 
 const cotizacionSchema = {
@@ -154,7 +156,12 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
         convencion: z.enum(["usd_por_unidad", "unidades_por_usd"]),
         agrupacion: z.enum(["diaria", "semanal", "mensual"]),
         resumen: resumenSchema,
-        serie: z.array(puntoAgregado),
+        serie: z.array(
+          puntoAgregado.extend({
+            referencia: z.enum(["misma_fecha", "fecha_anterior"]),
+            fecha_referencia: z.string(),
+          }),
+        ),
       },
     },
     async ({ codigo, fecha_inicial, fecha_final, agrupacion: modo }) =>
@@ -165,12 +172,14 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
             fecha: punto.fecha,
             valor: punto.valor,
             publicado_anticipado: punto.publicado_anticipado,
+            referencia: punto.referencia,
+            fecha_referencia: punto.fecha_referencia,
           })),
           modo ?? "auto",
         );
         const primero = puntos[0];
-        const aviso = puntos.some((punto) => punto.referencia === "tipo_cambio_dia")
-          ? "Algunas fechas no tenían referencia USD; en esas se usó TipoCambioDia."
+        const aviso = puntos.some((punto) => punto.referencia === "fecha_anterior")
+          ? "Algunas fechas usan la referencia USD del día hábil anterior, no la de hoy."
           : undefined;
         const nombre = primero?.nombre ?? String(codigo);
         return ok(textoSerie(`Serie de ${nombreSingular(codigo, nombre)} en quetzales`, lista, aviso), {
@@ -275,6 +284,8 @@ function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
     compra: cotizacion.compra,
     venta: cotizacion.venta,
     descontinuada: cotizacion.descontinuada,
+    referencia: cotizacion.referencia,
+    fecha_referencia: cotizacion.fecha_referencia,
   };
 }
 
@@ -282,8 +293,8 @@ function textoMoneda(cotizacion: CotizacionMoneda): string {
   const frase = fraseCotizacion(cotizacion);
   const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
   let base = `${etiquetaQuetzales(cotizacion.quetzales_por_unidad, cotizacion.nombre, singular)} al ${mostrarFecha(cotizacion.fecha)} (${frase}).`;
-  if (cotizacion.referencia === "tipo_cambio_dia") {
-    base += " No había referencia USD de esa fecha; se usó la de TipoCambioDia.";
+  if (cotizacion.referencia === "fecha_anterior") {
+    base += ` Referencia USD del ${mostrarFecha(cotizacion.fecha_referencia)}.`;
   }
   if (cotizacion.descontinuada) {
     base += ` Último dato: ${mostrarFecha(cotizacion.fecha)}, moneda reemplazada.`;
