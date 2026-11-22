@@ -12,7 +12,7 @@ import {
   type CotizacionMoneda,
 } from "./banguat.js";
 import { formatoQuetzales, redondear, redondearDatos } from "./formato.js";
-import { nombreSingular } from "./nombres.js";
+import { nombrePlural, nombreSingular } from "./nombres.js";
 import { acotarLineas, prepararSerie, type SerieLista } from "./serie.js";
 
 function fechaSchema(descripcion: string) {
@@ -34,6 +34,14 @@ const agrupacion = z
   .enum(["auto", "diaria", "semanal", "mensual"])
   .optional()
   .describe("auto usa diaria hasta 62 puntos, semanal hasta cerca de un año y mensual en tramos más largos.");
+
+const monto = z
+  .number({ invalid_type_error: "El monto debe ser un número mayor que cero." })
+  .positive("El monto debe ser mayor que cero.")
+  .describe("Cantidad a convertir, mayor que cero.");
+const direccion = z
+  .enum(["a_quetzales", "desde_quetzales"])
+  .describe("a_quetzales pasa de esa moneda a quetzales. desde_quetzales pasa de quetzales a esa moneda.");
 
 const codigoMoneda = z.coerce
   .number()
@@ -235,7 +243,58 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
       }),
   );
 
+  server.registerTool(
+    "convertir_monto",
+    {
+      title: "Convertir un monto",
+      description:
+        "Convierte un monto entre una moneda del catálogo y quetzales con el tipo de cambio vigente de tipo_cambio_moneda. direccion a_quetzales pasa de esa moneda a quetzales; desde_quetzales hace el camino inverso. El código 2 es el dólar de referencia. Si la moneda está descontinuada, no convierte.",
+      inputSchema: { monto, codigo: codigoMoneda, direccion },
+      outputSchema: {
+        monto: z.number(),
+        codigo: z.number(),
+        nombre: z.string(),
+        resultado: z.number(),
+        quetzales_por_unidad: z.number(),
+        fecha: z.string(),
+        descontinuada: z.boolean(),
+      },
+    },
+    async ({ monto: cantidad, codigo, direccion: sentido }) =>
+      run(async () => {
+        const cotizacion = await client.tipoCambioMoneda(codigo);
+        if (cotizacion.descontinuada) {
+          throw new Error(
+            `${cotizacion.nombre} está descontinuada: el último dato es del ${mostrarFecha(cotizacion.fecha)}. No se convierte con un tipo de cambio viejo.`,
+          );
+        }
+        const resultado = montoConvertido(cantidad, cotizacion.quetzales_por_unidad, sentido);
+        return ok(textoConversion(cantidad, resultado, cotizacion, sentido), {
+          monto: cantidad,
+          codigo,
+          nombre: cotizacion.nombre,
+          resultado,
+          quetzales_por_unidad: cotizacion.quetzales_por_unidad,
+          fecha: cotizacion.fecha,
+          descontinuada: cotizacion.descontinuada,
+        });
+      }),
+  );
+
   return server;
+}
+
+function montoConvertido(cantidad: number, quetzalesPorUnidad: number, sentido: "a_quetzales" | "desde_quetzales"): number {
+  switch (sentido) {
+    case "a_quetzales":
+      return cantidad * quetzalesPorUnidad;
+    case "desde_quetzales":
+      return cantidad / quetzalesPorUnidad;
+    default: {
+      const nunca: never = sentido;
+      return nunca;
+    }
+  }
 }
 
 function datosCotizacion(cotizacion: Cotizacion): {
@@ -321,6 +380,41 @@ function fraseCotizacion(cotizacion: CotizacionMoneda): string {
       return nunca;
     }
   }
+}
+
+function textoConversion(
+  cantidad: number,
+  resultado: number,
+  cotizacion: CotizacionMoneda,
+  sentido: "a_quetzales" | "desde_quetzales",
+): string {
+  const fecha = `tipo de cambio del ${mostrarFecha(cotizacion.fecha)}`;
+  const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
+  const plural = nombrePlural(cotizacion.codigo, cotizacion.nombre);
+  switch (sentido) {
+    case "a_quetzales":
+      return `${formatoCantidad(cantidad)} ${cantidad === 1 ? singular : plural} = ${formatoGtq(resultado)} (${fecha})`;
+    case "desde_quetzales":
+      return `${formatoGtq(cantidad)} = ${formatoCantidad(resultado)} ${redondear(resultado) === 1 ? singular : plural} (${fecha})`;
+    default: {
+      const nunca: never = sentido;
+      return nunca;
+    }
+  }
+}
+
+function formatoGtq(n: number): string {
+  const valor = redondear(n);
+  const decimales = Math.abs(valor) >= 0.1 ? 2 : 6;
+  const texto = new Intl.NumberFormat("es-GT", {
+    minimumFractionDigits: Math.min(2, decimales),
+    maximumFractionDigits: decimales,
+  }).format(valor);
+  return `Q${texto}`;
+}
+
+function formatoCantidad(n: number): string {
+  return new Intl.NumberFormat("es-GT", { maximumFractionDigits: 6 }).format(redondear(n));
 }
 
 function mostrarFecha(iso: string): string {

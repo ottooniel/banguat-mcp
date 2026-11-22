@@ -41,8 +41,55 @@ const SINGULARES: Record<number, string> = {
   42: "zloty",
 };
 
+const PLURALES: Record<number, string> = {
+  1: "quetzales",
+  2: "dólares de EE.UU.",
+  3: "yenes japoneses",
+  4: "francos belgas",
+  5: "francos suizos",
+  6: "francos franceses",
+  7: "dólares canadienses",
+  8: "liras italianas",
+  9: "libras esterlinas",
+  11: "marcos alemanes",
+  12: "pesetas españolas",
+  13: "chelines austríacos",
+  14: "florines holandeses",
+  15: "coronas suecas",
+  16: "colones costarricenses",
+  17: "colones salvadoreños",
+  18: "pesos mexicanos",
+  19: "lempiras hondureños",
+  21: "córdobas nicaragüenses",
+  22: "bolívares venezolanos",
+  23: "coronas danesas",
+  24: "euros",
+  25: "coronas noruegas",
+  26: "DEG",
+  27: "escudos portugueses",
+  28: "unidades de cuenta del BID",
+  29: "pesos argentinos",
+  30: "reales brasileños",
+  31: "wones coreanos",
+  32: "dólares de Hong Kong",
+  33: "dólares de Taiwán",
+  34: "yuanes chinos",
+  35: "rupias pakistaníes",
+  36: "rupias indias",
+  37: "bolívares fuertes",
+  38: "pesos colombianos",
+  39: "pesos dominicanos",
+  40: "ringgits malasios",
+  41: "bolívares soberanos",
+  42: "zlotys",
+};
+
 export function nombreSingular(codigo: number, respaldo: string): string {
   return SINGULARES[codigo] ?? respaldo.toLowerCase();
+}
+
+export function nombrePlural(codigo: number, respaldo: string): string {
+  return PLURALES[codigo] ?? respaldo.toLowerCase();
 }
 
 export function codigosConNombre(): number[] {

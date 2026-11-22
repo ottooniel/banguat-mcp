@@ -112,6 +112,7 @@ describe("tools MCP", () => {
     const listed = await client.listTools();
     const names = listed.tools.map((tool) => tool.name).sort();
     expect(names).toEqual([
+      "convertir_monto",
       "monedas_disponibles",
       "tipo_cambio_desde",
       "tipo_cambio_hoy",
@@ -236,6 +237,50 @@ describe("tools MCP", () => {
     );
     expect(codigoInvalido.isError).toBe(true);
     expect(JSON.stringify(codigoInvalido.content)).toMatch(/entero positivo/);
+  });
+
+  it("convierte un monto a quetzales y rechaza una moneda descontinuada", async () => {
+    const client = await conectar(clientFalso());
+    const euros = asResult(
+      await client.callTool({
+        name: "convertir_monto",
+        arguments: { monto: 250, codigo: 24, direccion: "a_quetzales" },
+      }),
+    );
+    expect(euros.isError).toBeUndefined();
+    const tasa = 1.0988 * 7.64781;
+    expect(euros.structuredContent).toMatchObject({
+      monto: 250,
+      codigo: 24,
+      nombre: "Euro",
+      resultado: Number((250 * tasa).toPrecision(6)),
+      fecha: "2026-11-20",
+      descontinuada: false,
+    });
+    expect(JSON.stringify(euros.content)).toContain("250 euros = Q2,100.85 (tipo de cambio del 20/11/2026)");
+
+    const cero = asResult(
+      await client.callTool({
+        name: "convertir_monto",
+        arguments: { monto: 0, codigo: 24, direccion: "a_quetzales" },
+      }),
+    );
+    expect(cero.isError).toBe(true);
+
+    const vieja = await conectar(
+      clientFalso({
+        tipoCambioMoneda: async () => ({ ...cotizacionMoneda(4), descontinuada: true, fecha: "2001-12-31" }),
+      }),
+    );
+    const franco = asResult(
+      await vieja.callTool({
+        name: "convertir_monto",
+        arguments: { monto: 10, codigo: 4, direccion: "desde_quetzales" },
+      }),
+    );
+    expect(franco.isError).toBe(true);
+    expect(JSON.stringify(franco.content)).toContain("descontinuada");
+    expect(JSON.stringify(franco.content)).toContain("2001");
   });
 
   it("devuelve el mensaje del Banguat cuando el servicio falla", async () => {
