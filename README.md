@@ -1,25 +1,124 @@
 # banguat-mcp
 
-Servidor [MCP](https://modelcontextprotocol.io) que consulta el tipo de cambio publicado por el web service SOAP del Banco de Guatemala.
+[![CI](https://github.com/omenendezNIU/banguat-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/omenendezNIU/banguat-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/banguat-mcp)](https://www.npmjs.com/package/banguat-mcp)
 
-Expone cuatro herramientas para un modelo de lenguaje:
+Servidor [MCP](https://modelcontextprotocol.io) que consulta el tipo de cambio publicado por el web service SOAP del Banco de Guatemala y lo expresa en quetzales.
 
-| Herramienta | Qué responde |
-| --- | --- |
-| `tipo_cambio_hoy` | Tipo de cambio de referencia USD/GTQ del día |
-| `tipo_cambio_desde` | Serie del dólar desde una fecha (`YYYY-MM-DD`) hasta hoy |
-| `monedas_disponibles` | Códigos y nombres de las monedas consultables |
-| `tipo_cambio_moneda` | Tipo de cambio de una moneda, por el código de la lista anterior |
+## Herramientas
 
-Las operaciones SOAP que usa son las del WSDL de `TipoCambio.asmx`: `TipoCambioDia`, `TipoCambioFechaInicial`, `VariablesDisponibles` y `Variables`.
+| Herramienta | Operación SOAP | Qué responde |
+| --- | --- | --- |
+| `tipo_cambio_hoy` | `TipoCambioDia` | Referencia USD/GTQ del día |
+| `tipo_cambio_desde` | `TipoCambioFechaInicial` o `TipoCambioRango` si hay `fecha_final` | Serie del dólar, con resumen y puntos agrupados |
+| `monedas_disponibles` | `VariablesDisponibles` | Código y nombre de cada moneda. No consulta el tipo de cambio |
+| `tipo_cambio_moneda` | `Variables` y `TipoCambioRango` de esa fecha | Quetzales por 1 unidad de esa moneda |
+| `tipo_cambio_moneda_rango` | `TipoCambioRangoMoneda` | Serie de esa moneda, ya convertida a quetzales |
+
+`tipo_cambio_desde` y `tipo_cambio_moneda_rango` aceptan `agrupacion`: `auto` (diaria hasta 62 puntos, semanal hasta cerca de un año, mensual si el tramo es más largo), `diaria`, `semanal` o `mensual`. Cada punto agregado trae cierre, mínimo y máximo. El resumen incluye inicio, fin, variación, mínimo, máximo y cuántos registros diarios había.
+
+## Unidades
+
+El servicio `Variables` no cotiza contra el quetzal: cotiza contra el dólar, con dos convenciones.
+
+| Códigos | Convención | Quetzales por 1 unidad |
+| --- | --- | --- |
+| 9 libra, 24 euro, 26 DEG | `usd_por_unidad` (USD por 1 unidad) | cotización × referencia USD |
+| El resto | `unidades_por_usd` (unidades por 1 USD) | referencia USD ÷ cotización |
+
+La referencia USD es la del mismo día, leída con `TipoCambioRango(fecha, fecha)`. Si ese día no trae dato, se usa `TipoCambioDia` y el texto lo dice.
+
+- El código 1 es el quetzal. La herramienta responde que no tiene cotización contra sí mismo.
+- El código 2 usa la referencia del día, la misma cifra que `tipo_cambio_hoy`.
+- Si la fecha de la cotización tiene más de 30 días, `descontinuada` es `true`. `monedas_disponibles` solo documenta ese campo: no llama al servicio una vez por moneda.
+- En las series, una fecha posterior a hoy (hora de Guatemala) llega con `publicado_anticipado: true`. El Banguat publica por adelantado el siguiente día hábil. `tipo_cambio_hoy` no cambia.
+
+Ejemplo real del 20/11/2026, con referencia USD 7.64781: el euro venía a 1.0988 USD por euro, así que 1 euro = Q8.40. El peso mexicano venía a 19.0201 pesos por dólar, así que 1 peso = Q0.40.
+
+## Ejemplos de respuesta
+
+`tipo_cambio_hoy`:
+
+```json
+{ "fecha": "2026-11-22", "valor": 7.64781, "moneda": "USD" }
+```
+
+`tipo_cambio_moneda` con código 24:
+
+```text
+1 Euro = Q8.40 al 20/11/2026 (cotización 1.0988 USD por euro).
+```
+
+```json
+{
+  "fecha": "2026-11-20",
+  "codigo": 24,
+  "nombre": "Euro",
+  "quetzales_por_unidad": 8.403413628,
+  "cotizacion_usd": 1.0988,
+  "convencion": "usd_por_unidad",
+  "compra": 1.0988,
+  "venta": 1.0988,
+  "descontinuada": false
+}
+```
+
+`tipo_cambio_moneda` con código 18:
+
+```json
+{
+  "fecha": "2026-11-20",
+  "codigo": 18,
+  "nombre": "Pesos Mexicanos",
+  "quetzales_por_unidad": 0.40209094589408045,
+  "cotizacion_usd": 19.0201,
+  "convencion": "unidades_por_usd",
+  "compra": 19.0155,
+  "venta": 19.0201,
+  "descontinuada": false
+}
+```
+
+`monedas_disponibles` (recorte):
+
+```json
+{
+  "monedas": [
+    { "codigo": 2, "descripcion": "Dólares de EE.UU." },
+    { "codigo": 24, "descripcion": "Euro" }
+  ]
+}
+```
+
+`tipo_cambio_desde` desde el 18/11/2026. El 23/11/2026 ya venía publicado:
+
+```json
+{
+  "agrupacion": "diaria",
+  "resumen": {
+    "inicio": "2026-11-18",
+    "fin": "2026-11-23",
+    "valor_inicial": 7.64489,
+    "valor_final": 7.64059,
+    "variacion_pct": -0.0562467216663647,
+    "minimo": { "fecha": "2026-11-23", "valor": 7.64059 },
+    "maximo": { "fecha": "2026-11-20", "valor": 7.64781 },
+    "registros_originales": 6
+  },
+  "serie": [
+    { "fecha": "2026-11-22", "cierre": 7.64781, "min": 7.64781, "max": 7.64781, "publicado_anticipado": false },
+    { "fecha": "2026-11-23", "cierre": 7.64059, "min": 7.64059, "max": 7.64059, "publicado_anticipado": true }
+  ]
+}
+```
+
+`tipo_cambio_moneda_rango` devuelve la misma forma de resumen y serie, más `codigo`, `nombre` y `convencion`. Los valores de la serie ya están en quetzales por unidad.
 
 ## Requisitos
 
 - Node.js 20 o superior
 
 ## Instalación
-
-No hace falta clonar el repositorio. Un cliente MCP puede arrancarlo con npx:
 
 ```bash
 npx -y banguat-mcp
@@ -31,13 +130,14 @@ Para desarrollar en este repositorio:
 npm install
 npm test
 npm run build
+node scripts/grabar-fixtures.mjs
 ```
 
-El ejecutable queda en `dist/index.js`.
+El ejecutable queda en `dist/index.js`. El script vuelve a guardar en `test/fixtures/` las respuestas reales del servicio.
 
 ## Claude Desktop
 
-Edita `%APPDATA%\Claude\claude_desktop_config.json` (en Windows) o `~/Library/Application Support/Claude/claude_desktop_config.json` (en macOS):
+Edita `%APPDATA%\Claude\claude_desktop_config.json` en Windows o `~/Library/Application Support/Claude/claude_desktop_config.json` en macOS:
 
 ```json
 {
@@ -54,7 +154,7 @@ Reinicia Claude Desktop después de guardar.
 
 ## Cursor
 
-En el `mcp.json` del proyecto (`.cursor/mcp.json`) o en el del usuario:
+En `.cursor/mcp.json` o en el `mcp.json` del usuario:
 
 ```json
 {
@@ -67,7 +167,7 @@ En el `mcp.json` del proyecto (`.cursor/mcp.json`) o en el del usuario:
 }
 ```
 
-Si estás probando esta copia local, antes de publicarla en npm, apunta al build:
+Para esta copia local, antes de publicarla:
 
 ```json
 {
@@ -84,15 +184,15 @@ Si estás probando esta copia local, antes de publicarla en npm, apunta al build
 
 - ¿Cuál es el tipo de cambio del dólar hoy?
 - ¿Cómo ha estado el dólar desde el 1 de noviembre de 2026?
-- ¿Qué monedas puedo consultar en el Banguat?
-- ¿Cuál es el tipo de cambio del euro? (el modelo debe tomar el código de `monedas_disponibles`, por ejemplo 24)
+- ¿Cuántos quetzales vale un euro?
+- ¿Qué monedas del catálogo ya no se publican?
 
 ## Cómo se comporta
 
-- La fecha de entrada es `YYYY-MM-DD`. El servidor la convierte a `dd/mm/aaaa`, que es el formato del servicio, y rechaza fechas imposibles o futuras según el calendario de Guatemala.
-- El tipo de cambio del día se guarda en memoria 1 hora. Una serie histórica, 24 horas. Un error de red no se cachea.
-- Cada llamada espera como máximo 10 segundos. Si el Banguat no responde, la herramienta devuelve un mensaje para reintentar más tarde.
-- Cada respuesta trae un texto legible y datos estructurados (`fecha`, `valor`, `moneda`; en la serie también compra y venta).
+- La fecha de entrada es `YYYY-MM-DD`. El servidor la convierte a `dd/mm/aaaa` y rechaza fechas imposibles o futuras según el calendario de Guatemala.
+- El tipo de cambio del día se guarda en memoria 1 hora. Una serie, 24 horas. La clave incluye la fecha de Guatemala. Hay como máximo 200 entradas y las llamadas iguales en vuelo se hacen una sola vez.
+- Cada llamada espera como máximo 10 segundos. Si el Banguat no responde, la herramienta pide reintentar más tarde.
+- El texto de una serie no pasa de unas 70 líneas. Los datos estructurados traen el resumen y los puntos ya agrupados.
 
 ## Disclaimer
 
