@@ -43,6 +43,28 @@ function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
       { fecha: "2026-11-18", valor: 7.64489, moneda: "USD", compra: 7.64489, venta: 7.64489 },
       { fecha: XML_FECHA, valor: 7.64781, moneda: "USD", compra: 7.64781, venta: 7.64781 },
     ],
+    tipoCambioMonedaRango: async () => [
+      {
+        fecha: "2026-11-18",
+        valor: 8.4,
+        codigo: 24,
+        nombre: "Euro",
+        convencion: "usd_por_unidad",
+        compra: 1.09,
+        venta: 1.1,
+        referencia: "misma_fecha",
+      },
+      {
+        fecha: "2026-11-20",
+        valor: 8.41,
+        codigo: 24,
+        nombre: "Euro",
+        convencion: "usd_por_unidad",
+        compra: 1.09,
+        venta: 1.1,
+        referencia: "misma_fecha",
+      },
+    ],
     monedasDisponibles: async () => [
       { codigo: 2, descripcion: "Dólares de EE.UU." },
       { codigo: 24, descripcion: "Euro" },
@@ -72,10 +94,18 @@ describe("tools MCP", () => {
     const client = await conectar(clientFalso());
     const listed = await client.listTools();
     const names = listed.tools.map((tool) => tool.name).sort();
-    expect(names).toEqual(["monedas_disponibles", "tipo_cambio_desde", "tipo_cambio_hoy", "tipo_cambio_moneda"]);
+    expect(names).toEqual([
+      "monedas_disponibles",
+      "tipo_cambio_desde",
+      "tipo_cambio_hoy",
+      "tipo_cambio_moneda",
+      "tipo_cambio_moneda_rango",
+    ]);
     for (const tool of listed.tools) {
       expect(tool.description?.length ?? 0).toBeGreaterThan(40);
     }
+    const catalogo = listed.tools.find((tool) => tool.name === "monedas_disponibles");
+    expect(catalogo?.description).toMatch(/descontinuada/);
   });
 
   it("devuelve texto y datos estructurados del dólar del día", async () => {
@@ -93,10 +123,11 @@ describe("tools MCP", () => {
       await client.callTool({ name: "tipo_cambio_desde", arguments: { fecha_inicial: "2026-11-18" } }),
     );
     expect(ok.structuredContent).toMatchObject({
-      moneda: "USD",
+      agrupacion: "diaria",
+      resumen: { inicio: "2026-11-18", fin: XML_FECHA, registros_originales: 2 },
       serie: [
-        { fecha: "2026-11-18", valor: 7.64489, moneda: "USD" },
-        { fecha: XML_FECHA, valor: 7.64781, moneda: "USD" },
+        { fecha: "2026-11-18", cierre: 7.64489, min: 7.64489, max: 7.64489 },
+        { fecha: XML_FECHA, cierre: 7.64781, min: 7.64781, max: 7.64781 },
       ],
     });
 
@@ -133,6 +164,15 @@ describe("tools MCP", () => {
     });
     expect(JSON.stringify(euro.content)).toContain("1 Euro = Q8.40 al 20/11/2026");
     expect(JSON.stringify(euro.content)).toContain("1.0988 USD por euro");
+
+    const conAviso = await conectar(
+      clientFalso({
+        tipoCambioMoneda: async () => ({ ...cotizacionMoneda(4), descontinuada: true, fecha: "2001-12-31" }),
+      }),
+    );
+    const vieja = asResult(await conAviso.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 4 } }));
+    expect(JSON.stringify(vieja.content)).toContain("Último dato: 31/12/2001, moneda reemplazada");
+    expect(vieja.structuredContent).toMatchObject({ descontinuada: true });
 
     const codigoInvalido = asResult(
       await client.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: -2 } }),

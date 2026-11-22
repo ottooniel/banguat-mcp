@@ -7,25 +7,52 @@ import {
   type BanguatClient,
   type Cotizacion,
   type CotizacionMoneda,
-  type PuntoSerie,
 } from "./banguat.js";
+import { acotarLineas, prepararSerie, type SerieLista } from "./serie.js";
 
-const fechaInicial = z
-  .string()
-  .trim()
-  .superRefine((value, ctx) => {
-    const message = fechaInicialError(value);
-    if (message) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
-    }
-  })
-  .describe("Fecha inicial inclusive, en formato YYYY-MM-DD. No puede ser futura (hora de Guatemala).");
+function fechaSchema(descripcion: string) {
+  return z
+    .string()
+    .trim()
+    .superRefine((value, ctx) => {
+      const message = fechaInicialError(value);
+      if (message) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    })
+    .describe(descripcion);
+}
+
+const fechaInicial = fechaSchema("Fecha inicial inclusive, en formato YYYY-MM-DD. No puede ser futura (hora de Guatemala).");
+const fechaFinal = fechaSchema(
+  "Fecha final inclusive, YYYY-MM-DD, igual o posterior a fecha_inicial. Si se omite en la serie del dólar, llega hasta el día corriente.",
+).optional();
+const agrupacion = z
+  .enum(["auto", "diaria", "semanal", "mensual"])
+  .optional()
+  .describe("auto usa diaria hasta 62 puntos, semanal hasta cerca de un año y mensual en tramos más largos.");
 
 const codigoMoneda = z.coerce
   .number()
   .int("El código de moneda debe ser un entero. Obténlo con monedas_disponibles.")
   .positive("El código de moneda debe ser un entero positivo. Obténlo con monedas_disponibles.")
   .describe("Código numérico de la moneda, el campo moneda de monedas_disponibles. Ejemplo: 2 dólar, 24 euro.");
+
+const resumenSchema = z.object({
+  inicio: z.string(),
+  fin: z.string(),
+  valor_inicial: z.number(),
+  valor_final: z.number(),
+  variacion_pct: z.number(),
+  minimo: z.object({ fecha: z.string(), valor: z.number() }),
+  maximo: z.object({ fecha: z.string(), valor: z.number() }),
+  registros_originales: z.number(),
+});
+
+const puntoAgregado = z.object({
+  fecha: z.string(),
+  cierre: z.number(),
+  min: z.number(),
+  max: z.number(),
+});
 
 const monedaSchema = {
   fecha: z.string().describe("Fecha de la cotización, YYYY-MM-DD"),
@@ -80,26 +107,61 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     {
       title: "Serie del dólar desde una fecha",
       description:
-        "Devuelve la serie del tipo de cambio del dólar (USD/GTQ) desde fecha_inicial hasta el día corriente, con la operación TipoCambioFechaInicial del Banguat. Úsala para historial, tendencia o evolución del dólar. fecha_inicial va en YYYY-MM-DD y no puede ser futura. No sirve para monedas distintas del dólar.",
-      inputSchema: { fecha_inicial: fechaInicial },
+        "Devuelve la serie del dólar (USD/GTQ), agregada, desde fecha_inicial. Sin fecha_final usa TipoCambioFechaInicial (hasta el día corriente). Con fecha_final usa TipoCambioRango. Sirve para historial y tendencia del dólar, no para otras monedas. La respuesta trae resumen y solo los puntos ya agrupados.",
+      inputSchema: { fecha_inicial: fechaInicial, fecha_final: fechaFinal, agrupacion },
       outputSchema: {
-        moneda: z.string(),
-        serie: z.array(
-          z.object({
-            fecha: z.string(),
-            valor: z.number(),
-            moneda: z.literal("USD"),
-            compra: z.number(),
-            venta: z.number(),
-          }),
-        ),
+        agrupacion: z.enum(["diaria", "semanal", "mensual"]),
+        resumen: resumenSchema,
+        serie: z.array(puntoAgregado),
       },
     },
-    async ({ fecha_inicial }) =>
+    async ({ fecha_inicial, fecha_final, agrupacion: modo }) =>
       run(async () => {
-        const serie = await client.tipoCambioDesde(fecha_inicial);
-        const data = { moneda: "USD", serie };
-        return ok(textoSerie(fecha_inicial, serie), data);
+        const puntos = await client.tipoCambioDesde(fecha_inicial, fecha_final);
+        const lista = prepararSerie(puntos, modo ?? "auto");
+        return ok(textoSerie("Serie USD/GTQ", lista), {
+          agrupacion: lista.agrupacion,
+          resumen: lista.resumen,
+          serie: lista.serie,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "tipo_cambio_moneda_rango",
+    {
+      title: "Serie de una moneda en quetzales",
+      description:
+        "Devuelve la serie de una moneda entre fecha_inicial y fecha_final, convertida a quetzales con la misma regla que tipo_cambio_moneda (TipoCambioRangoMoneda más la referencia USD de cada fecha). El código sale de monedas_disponibles. El código 1 no aplica. Incluye resumen y puntos agrupados, no la serie diaria completa cuando la agrupación la reduce.",
+      inputSchema: { codigo: codigoMoneda, fecha_inicial: fechaInicial, fecha_final: fechaSchema("Fecha final inclusive, YYYY-MM-DD, igual o posterior a fecha_inicial."), agrupacion },
+      outputSchema: {
+        codigo: z.number(),
+        nombre: z.string(),
+        convencion: z.enum(["usd_por_unidad", "unidades_por_usd"]),
+        agrupacion: z.enum(["diaria", "semanal", "mensual"]),
+        resumen: resumenSchema,
+        serie: z.array(puntoAgregado),
+      },
+    },
+    async ({ codigo, fecha_inicial, fecha_final, agrupacion: modo }) =>
+      run(async () => {
+        const puntos = await client.tipoCambioMonedaRango(codigo, fecha_inicial, fecha_final);
+        const lista = prepararSerie(
+          puntos.map((punto) => ({ fecha: punto.fecha, valor: punto.valor })),
+          modo ?? "auto",
+        );
+        const primero = puntos[0];
+        const aviso = puntos.some((punto) => punto.referencia === "tipo_cambio_dia")
+          ? "Algunas fechas no tenían referencia USD; en esas se usó TipoCambioDia."
+          : undefined;
+        return ok(textoSerie(`Serie de ${primero?.nombre ?? codigo} en quetzales`, lista, aviso), {
+          codigo,
+          nombre: primero?.nombre ?? String(codigo),
+          convencion: primero?.convencion ?? "unidades_por_usd",
+          agrupacion: lista.agrupacion,
+          resumen: lista.resumen,
+          serie: lista.serie,
+        });
       }),
   );
 
@@ -108,7 +170,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     {
       title: "Monedas disponibles",
       description:
-        "Lista las monedas y variables que el web service del Banco de Guatemala permite consultar, con su código numérico (moneda) y su descripción. Úsala antes de tipo_cambio_moneda para elegir el código correcto. No recibe parámetros y no devuelve el tipo de cambio.",
+        "Lista las monedas y variables que el web service del Banco de Guatemala permite consultar, con su código numérico (moneda) y su descripción. Úsala antes de tipo_cambio_moneda para elegir el código correcto. No recibe parámetros y no consulta el tipo de cambio de cada moneda. Algunas siguen en el catálogo aunque ya no se publican: tipo_cambio_moneda marca descontinuada=true cuando el último dato tiene más de 30 días.",
       outputSchema: {
         monedas: z.array(
           z.object({
@@ -164,13 +226,17 @@ function datosCotizacion(cotizacion: Cotizacion): {
   };
 }
 
-function textoSerie(desde: string, serie: PuntoSerie[]): string {
-  const ultimo = serie[serie.length - 1];
-  const lineas = serie.map((punto) => `${punto.fecha}  ${punto.valor}`);
-  return [
-    `Serie USD/GTQ desde ${desde} hasta ${ultimo?.fecha ?? desde}. ${serie.length} registros. El valor es el tipo de venta.`,
-    ...lineas,
-  ].join("\n");
+function textoSerie(titulo: string, lista: SerieLista, aviso?: string): string {
+  const { resumen, serie, agrupacion: modo } = lista;
+  const lineas = [
+    `${titulo} del ${mostrarFecha(resumen.inicio)} al ${mostrarFecha(resumen.fin)}. Agrupación ${modo}. ${resumen.registros_originales} registros. Variación ${resumen.variacion_pct.toFixed(2)}%.`,
+    `Mínimo ${resumen.minimo.valor} el ${mostrarFecha(resumen.minimo.fecha)}. Máximo ${resumen.maximo.valor} el ${mostrarFecha(resumen.maximo.fecha)}.`,
+  ];
+  if (aviso) lineas.push(aviso);
+  for (const punto of serie) {
+    lineas.push(`${punto.fecha}  cierre ${punto.cierre}  min ${punto.min}  max ${punto.max}`);
+  }
+  return acotarLineas(lineas);
 }
 
 function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
@@ -189,9 +255,14 @@ function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
 
 function textoMoneda(cotizacion: CotizacionMoneda): string {
   const frase = fraseCotizacion(cotizacion);
-  const base = `1 ${cotizacion.nombre} = Q${cotizacion.quetzales_por_unidad.toFixed(2)} al ${mostrarFecha(cotizacion.fecha)} (cotización ${frase}).`;
-  if (cotizacion.referencia === "misma_fecha") return base;
-  return `${base} No había referencia USD de esa fecha; se usó la de TipoCambioDia.`;
+  let base = `1 ${cotizacion.nombre} = Q${cotizacion.quetzales_por_unidad.toFixed(2)} al ${mostrarFecha(cotizacion.fecha)} (cotización ${frase}).`;
+  if (cotizacion.referencia === "tipo_cambio_dia") {
+    base += " No había referencia USD de esa fecha; se usó la de TipoCambioDia.";
+  }
+  if (cotizacion.descontinuada) {
+    base += ` Último dato: ${mostrarFecha(cotizacion.fecha)}, moneda reemplazada.`;
+  }
+  return base;
 }
 
 function fraseCotizacion(cotizacion: CotizacionMoneda): string {

@@ -167,6 +167,18 @@ describe("cliente SOAP", () => {
     ]);
     expect(seen[0]).toContain("<fechainit>18/11/2026</fechainit>");
     expect(seen[0]).toContain("TipoCambioFechaInicial");
+
+    const conFin = createBanguatClient({
+      fetch: async (_url, init) => {
+        seen.push(String(init?.body));
+        return xmlResponse(XML_RANGO);
+      },
+      now: () => HOY.getTime(),
+    });
+    await conFin.tipoCambioDesde("2026-11-18", "2026-11-20");
+    expect(seen.at(-1)).toContain("TipoCambioRango");
+    expect(seen.at(-1)).toContain("<fechafin>20/11/2026</fechafin>");
+    await expect(conFin.tipoCambioDesde("2026-11-20", "2026-11-18")).rejects.toThrow(/anterior/);
   });
 
   it("lista las monedas del catálogo", async () => {
@@ -247,6 +259,23 @@ describe("cliente SOAP", () => {
     expect(llamadas.some((body) => body.includes("<variable>2</variable>"))).toBe(false);
   });
 
+  it("marca descontinuada cuando el último dato tiene más de 30 días", async () => {
+    const vieja = XML_EURO.replace("20/11/2026", "31/12/2001");
+    const client = createBanguatClient({
+      fetch: async (_url, init) => {
+        const body = String(init?.body);
+        if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
+        if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO_VACIO);
+        if (body.includes("TipoCambioDia")) return xmlResponse(XML_HOY);
+        return xmlResponse(vieja);
+      },
+      now: () => HOY.getTime(),
+    });
+    const euro = await client.tipoCambioMoneda(24);
+    expect(euro.descontinuada).toBe(true);
+    expect(euro.fecha).toBe("2001-12-31");
+  });
+
   it("explica cuando el código no trae cotización", async () => {
     const client = createBanguatClient({
       fetch: async (_url, init) =>
@@ -270,7 +299,7 @@ describe("cliente SOAP", () => {
 
   it("cachea el día una hora y la serie 24 horas", async () => {
     let calls = 0;
-    let clock = 0;
+    let clock = HOY.getTime();
     const client = createBanguatClient({
       fetch: async (_url, init) => {
         calls += 1;
@@ -280,18 +309,18 @@ describe("cliente SOAP", () => {
     });
 
     await client.tipoCambioHoy();
-    clock = TTL_HOY_MS - 1;
+    clock = HOY.getTime() + TTL_HOY_MS - 1;
     await client.tipoCambioHoy();
     expect(calls).toBe(1);
-    clock = TTL_HOY_MS;
+    clock = HOY.getTime() + TTL_HOY_MS;
     await client.tipoCambioHoy();
     expect(calls).toBe(2);
 
     await client.tipoCambioDesde("2026-01-01");
-    clock = TTL_HOY_MS + TTL_SERIE_MS - 1;
+    clock = HOY.getTime() + TTL_HOY_MS + TTL_SERIE_MS - 1;
     await client.tipoCambioDesde("2026-01-01");
     expect(calls).toBe(3);
-    clock = TTL_HOY_MS + TTL_SERIE_MS;
+    clock = HOY.getTime() + TTL_HOY_MS + TTL_SERIE_MS;
     await client.tipoCambioDesde("2026-01-01");
     expect(calls).toBe(4);
   });
