@@ -172,11 +172,34 @@ describe("tools MCP", () => {
       fecha: "2026-11-20",
       codigo: 24,
       nombre: "Euro",
+      nombre_singular: "euro",
       convencion: "usd_por_unidad",
       cotizacion_usd: 1.0988,
     });
-    expect(JSON.stringify(euro.content)).toContain("1 Euro = Q8.4034 al 20/11/2026");
+    expect(JSON.stringify(euro.content)).toContain("1 euro = Q8.4034 al 20/11/2026");
     expect(JSON.stringify(euro.content)).toContain("1.0988 USD por euro");
+
+    const peso = await conectar(
+      clientFalso({
+        tipoCambioMoneda: async () => ({
+          fecha: "2026-11-20",
+          codigo: 18,
+          nombre: "Pesos Mexicanos",
+          quetzales_por_unidad: 7.64781 / 19.0201,
+          cotizacion_usd: 19.0201,
+          convencion: "unidades_por_usd",
+          compra: 19.0155,
+          venta: 19.0201,
+          descontinuada: false,
+          referencia: "misma_fecha",
+        }),
+      }),
+    );
+    const mexicano = asResult(await peso.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 18 } }));
+    expect(mexicano.structuredContent).toMatchObject({ nombre: "Pesos Mexicanos", nombre_singular: "peso mexicano" });
+    expect(JSON.stringify(mexicano.content)).toContain(
+      "1 peso mexicano = Q0.4021 al 20/11/2026 (19.0201 pesos mexicanos por 1 USD)",
+    );
 
     const conAviso = await conectar(
       clientFalso({

@@ -12,6 +12,7 @@ import {
   type CotizacionMoneda,
 } from "./banguat.js";
 import { formatoQuetzales, redondear, redondearDatos } from "./formato.js";
+import { nombreSingular } from "./nombres.js";
 import { acotarLineas, prepararSerie, type SerieLista } from "./serie.js";
 
 function fechaSchema(descripcion: string) {
@@ -63,6 +64,7 @@ const monedaSchema = {
   fecha: z.string().describe("Fecha de la cotización, YYYY-MM-DD"),
   codigo: z.number().describe("Código de monedas_disponibles"),
   nombre: z.string().describe("Nombre de la moneda en el catálogo del Banguat"),
+  nombre_singular: z.string().describe("Nombre en singular para el texto"),
   quetzales_por_unidad: z.number().describe("Quetzales por 1 unidad de esa moneda"),
   cotizacion_usd: z.number().describe("Cifra publicada por el Banguat, cotizada contra el dólar"),
   convencion: z.enum(["usd_por_unidad", "unidades_por_usd"]),
@@ -148,6 +150,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
       outputSchema: {
         codigo: z.number(),
         nombre: z.string(),
+        nombre_singular: z.string(),
         convencion: z.enum(["usd_por_unidad", "unidades_por_usd"]),
         agrupacion: z.enum(["diaria", "semanal", "mensual"]),
         resumen: resumenSchema,
@@ -169,9 +172,11 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
         const aviso = puntos.some((punto) => punto.referencia === "tipo_cambio_dia")
           ? "Algunas fechas no tenían referencia USD; en esas se usó TipoCambioDia."
           : undefined;
-        return ok(textoSerie(`Serie de ${primero?.nombre ?? codigo} en quetzales`, lista, aviso), {
+        const nombre = primero?.nombre ?? String(codigo);
+        return ok(textoSerie(`Serie de ${nombreSingular(codigo, nombre)} en quetzales`, lista, aviso), {
           codigo,
-          nombre: primero?.nombre ?? String(codigo),
+          nombre,
+          nombre_singular: nombreSingular(codigo, nombre),
           convencion: primero?.convencion ?? "unidades_por_usd",
           agrupacion: lista.agrupacion,
           resumen: lista.resumen,
@@ -263,6 +268,7 @@ function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
     fecha: cotizacion.fecha,
     codigo: cotizacion.codigo,
     nombre: cotizacion.nombre,
+    nombre_singular: nombreSingular(cotizacion.codigo, cotizacion.nombre),
     quetzales_por_unidad: cotizacion.quetzales_por_unidad,
     cotizacion_usd: cotizacion.cotizacion_usd,
     convencion: cotizacion.convencion,
@@ -274,7 +280,8 @@ function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
 
 function textoMoneda(cotizacion: CotizacionMoneda): string {
   const frase = fraseCotizacion(cotizacion);
-  let base = `${etiquetaQuetzales(cotizacion.quetzales_por_unidad, cotizacion.nombre)} al ${mostrarFecha(cotizacion.fecha)} (cotización ${frase}).`;
+  const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
+  let base = `${etiquetaQuetzales(cotizacion.quetzales_por_unidad, cotizacion.nombre, singular)} al ${mostrarFecha(cotizacion.fecha)} (${frase}).`;
   if (cotizacion.referencia === "tipo_cambio_dia") {
     base += " No había referencia USD de esa fecha; se usó la de TipoCambioDia.";
   }
@@ -284,17 +291,18 @@ function textoMoneda(cotizacion: CotizacionMoneda): string {
   return base;
 }
 
-function etiquetaQuetzales(q: number, nombre: string): string {
+function etiquetaQuetzales(q: number, nombre: string, singular: string): string {
   const texto = formatoQuetzales(q, nombre);
   if (redondear(q) < 0.1) return texto;
-  return `1 ${nombre} = ${texto}`;
+  return `1 ${singular} = ${texto}`;
 }
 
 function fraseCotizacion(cotizacion: CotizacionMoneda): string {
   const cotizacionUsd = redondear(cotizacion.cotizacion_usd);
+  const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
   switch (cotizacion.convencion) {
     case "usd_por_unidad":
-      return `${cotizacionUsd} USD por ${cotizacion.nombre.toLowerCase()}`;
+      return `${cotizacionUsd} USD por ${singular}`;
     case "unidades_por_usd":
       return `${cotizacionUsd} ${cotizacion.nombre.toLowerCase()} por 1 USD`;
     default: {
