@@ -2,10 +2,39 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
-import type { BanguatClient } from "../src/banguat.js";
+import type { BanguatClient, CotizacionMoneda } from "../src/banguat.js";
 import { createServer } from "../src/server.js";
 
 const XML_FECHA = "2026-11-22";
+
+function cotizacionMoneda(codigo: number): CotizacionMoneda {
+  if (codigo === 2) {
+    return {
+      fecha: XML_FECHA,
+      codigo: 2,
+      nombre: "Dólares de EE.UU.",
+      quetzales_por_unidad: 7.64781,
+      cotizacion_usd: 1,
+      convencion: "usd_por_unidad",
+      compra: 7.64781,
+      venta: 7.64781,
+      descontinuada: false,
+      referencia: "misma_fecha",
+    };
+  }
+  return {
+    fecha: "2026-11-20",
+    codigo,
+    nombre: "Euro",
+    quetzales_por_unidad: 1.0988 * 7.64781,
+    cotizacion_usd: 1.0988,
+    convencion: "usd_por_unidad",
+    compra: 1.09,
+    venta: 1.0988,
+    descontinuada: false,
+    referencia: "misma_fecha",
+  };
+}
 
 function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
   return {
@@ -18,10 +47,7 @@ function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
       { codigo: 2, descripcion: "Dólares de EE.UU." },
       { codigo: 24, descripcion: "Euro" },
     ],
-    tipoCambioMoneda: async (codigo) =>
-      codigo === 2
-        ? { fecha: XML_FECHA, valor: 7.64781, moneda: "USD" }
-        : { fecha: "2026-11-20", valor: 1.0988, moneda: String(codigo), compra: 1.09, venta: 1.0988 },
+    tipoCambioMoneda: async (codigo) => cotizacionMoneda(codigo),
     ...overrides,
   };
 }
@@ -98,14 +124,15 @@ describe("tools MCP", () => {
     });
 
     const euro = asResult(await client.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 24 } }));
-    expect(euro.structuredContent).toEqual({
+    expect(euro.structuredContent).toMatchObject({
       fecha: "2026-11-20",
-      valor: 1.0988,
-      moneda: "24",
-      compra: 1.09,
-      venta: 1.0988,
+      codigo: 24,
+      nombre: "Euro",
+      convencion: "usd_por_unidad",
+      cotizacion_usd: 1.0988,
     });
-    expect(JSON.stringify(euro.content)).toContain("venta 1.0988");
+    expect(JSON.stringify(euro.content)).toContain("1 Euro = Q8.40 al 20/11/2026");
+    expect(JSON.stringify(euro.content)).toContain("1.0988 USD por euro");
 
     const codigoInvalido = asResult(
       await client.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: -2 } }),

@@ -44,6 +44,7 @@ const XML_MONEDAS = `<?xml version="1.0" encoding="utf-8"?>
       <VariablesDisponiblesResult>
         <Variables>
           <Variable><moneda>2</moneda><descripcion>Dólares de EE.UU.</descripcion></Variable>
+          <Variable><moneda>18</moneda><descripcion>Pesos Mexicanos</descripcion></Variable>
           <Variable><moneda>24</moneda><descripcion>Euro</descripcion></Variable>
         </Variables>
         <TotalItems>2</TotalItems>
@@ -64,15 +65,36 @@ const XML_EURO = `<?xml version="1.0" encoding="utf-8"?>
   </soap:Body>
 </soap:Envelope>`;
 
-const XML_USD = `<?xml version="1.0" encoding="utf-8"?>
+const XML_PESO = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <VariablesResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
       <VariablesResult>
-        <CambioDolar><VarDolar><fecha>22/11/2026</fecha><referencia>7.64781</referencia></VarDolar></CambioDolar>
+        <CambioDia><Var><moneda>18</moneda><fecha>20/11/2026</fecha><venta>18.5</venta><compra>18.4</compra></Var></CambioDia>
         <TotalItems>1</TotalItems>
       </VariablesResult>
     </VariablesResponse>
+  </soap:Body>
+</soap:Envelope>`;
+
+const XML_RANGO = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <TipoCambioRangoResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
+      <TipoCambioRangoResult>
+        <Vars><Var><moneda>2</moneda><fecha>20/11/2026</fecha><venta>7.64781</venta><compra>7.64781</compra></Var></Vars>
+        <TotalItems>1</TotalItems>
+      </TipoCambioRangoResult>
+    </TipoCambioRangoResponse>
+  </soap:Body>
+</soap:Envelope>`;
+
+const XML_RANGO_VACIO = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <TipoCambioRangoResponse xmlns="http://www.banguat.gob.gt/variables/ws/">
+      <TipoCambioRangoResult><TotalItems>0</TotalItems></TipoCambioRangoResult>
+    </TipoCambioRangoResponse>
   </soap:Body>
 </soap:Envelope>`;
 
@@ -151,31 +173,85 @@ describe("cliente SOAP", () => {
     const client = createBanguatClient({ fetch: async () => xmlResponse(XML_MONEDAS) });
     await expect(client.monedasDisponibles()).resolves.toEqual([
       { codigo: 2, descripcion: "Dólares de EE.UU." },
+      { codigo: 18, descripcion: "Pesos Mexicanos" },
       { codigo: 24, descripcion: "Euro" },
     ]);
   });
 
-  it("lee compra y venta de una moneda y la referencia si el código es el dólar", async () => {
+  it("convierte el euro y el peso a quetzales con la referencia de la misma fecha", async () => {
+    const llamadas: string[] = [];
     const client = createBanguatClient({
-      fetch: async (_url, init) => xmlResponse(String(init?.body).includes("<variable>2</variable>") ? XML_USD : XML_EURO),
+      fetch: async (_url, init) => {
+        const body = String(init?.body);
+        llamadas.push(body);
+        if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
+        if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO);
+        if (body.includes("<variable>18</variable>")) return xmlResponse(XML_PESO);
+        if (body.includes("<variable>24</variable>")) return xmlResponse(XML_EURO);
+        return xmlResponse(XML_HOY);
+      },
+      now: () => HOY.getTime(),
     });
 
-    await expect(client.tipoCambioMoneda(24)).resolves.toEqual({
+    const euro = await client.tipoCambioMoneda(24);
+    expect(euro).toMatchObject({
       fecha: "2026-11-20",
-      valor: 1.0988,
-      moneda: "24",
+      codigo: 24,
+      nombre: "Euro",
+      cotizacion_usd: 1.0988,
+      convencion: "usd_por_unidad",
       compra: 1.09,
       venta: 1.0988,
+      referencia: "misma_fecha",
     });
-    await expect(client.tipoCambioMoneda(2)).resolves.toMatchObject({
-      fecha: "2026-11-22",
-      valor: 7.64781,
-      moneda: "USD",
+    expect(euro.quetzales_por_unidad).toBeCloseTo(1.0988 * 7.64781, 8);
+    expect(llamadas.some((body) => body.includes("TipoCambioRango") && body.includes("20/11/2026"))).toBe(true);
+
+    const peso = await client.tipoCambioMoneda(18);
+    expect(peso.convencion).toBe("unidades_por_usd");
+    expect(peso.quetzales_por_unidad).toBeCloseTo(7.64781 / 18.5, 8);
+    expect(peso.nombre).toBe("Pesos Mexicanos");
+  });
+
+  it("usa TipoCambioDia si no hay referencia USD de la fecha de la moneda", async () => {
+    const client = createBanguatClient({
+      fetch: async (_url, init) => {
+        const body = String(init?.body);
+        if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
+        if (body.includes("TipoCambioRango")) return xmlResponse(XML_RANGO_VACIO);
+        if (body.includes("TipoCambioDia")) return xmlResponse(XML_HOY);
+        return xmlResponse(XML_EURO);
+      },
+      now: () => HOY.getTime(),
     });
+    const euro = await client.tipoCambioMoneda(24);
+    expect(euro.referencia).toBe("tipo_cambio_dia");
+    expect(euro.quetzales_por_unidad).toBeCloseTo(1.0988 * 7.64781, 8);
+  });
+
+  it("rechaza el quetzal y resuelve el dólar con la referencia del día", async () => {
+    const llamadas: string[] = [];
+    const client = createBanguatClient({
+      fetch: async (_url, init) => {
+        const body = String(init?.body);
+        llamadas.push(body);
+        if (body.includes("VariablesDisponibles")) return xmlResponse(XML_MONEDAS);
+        return xmlResponse(XML_HOY);
+      },
+      now: () => HOY.getTime(),
+    });
+    await expect(client.tipoCambioMoneda(1)).rejects.toThrow(/Quetzales/);
+    const dolar = await client.tipoCambioMoneda(2);
+    expect(dolar.quetzales_por_unidad).toBe(7.64781);
+    expect(dolar.cotizacion_usd).toBe(1);
+    expect(llamadas.some((body) => body.includes("<variable>2</variable>"))).toBe(false);
   });
 
   it("explica cuando el código no trae cotización", async () => {
-    const client = createBanguatClient({ fetch: async () => xmlResponse(XML_VACIO) });
+    const client = createBanguatClient({
+      fetch: async (_url, init) =>
+        xmlResponse(String(init?.body).includes("VariablesDisponibles") ? XML_MONEDAS : XML_VACIO),
+    });
     await expect(client.tipoCambioMoneda(999)).rejects.toThrow(/moneda 999/);
   });
 

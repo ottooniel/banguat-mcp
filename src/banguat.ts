@@ -22,6 +22,43 @@ export type Cotizacion = {
   venta?: number;
 };
 
+export type Convencion = "usd_por_unidad" | "unidades_por_usd";
+
+export type CotizacionMoneda = {
+  fecha: string;
+  codigo: number;
+  nombre: string;
+  quetzales_por_unidad: number;
+  cotizacion_usd: number;
+  convencion: Convencion;
+  compra: number;
+  venta: number;
+  descontinuada: boolean;
+  referencia: "misma_fecha" | "tipo_cambio_dia";
+};
+
+const USD_POR_UNIDAD = new Set([9, 24, 26]);
+
+export function convencionDe(codigo: number): Convencion {
+  return USD_POR_UNIDAD.has(codigo) ? "usd_por_unidad" : "unidades_por_usd";
+}
+
+export function aQuetzales(convencion: Convencion, cotizacionUsd: number, referenciaUsd: number): number {
+  if (cotizacionUsd === 0) {
+    throw new BanguatError("El Banguat devolvió una cotización en cero y no se puede convertir a quetzales.");
+  }
+  switch (convencion) {
+    case "usd_por_unidad":
+      return cotizacionUsd * referenciaUsd;
+    case "unidades_por_usd":
+      return referenciaUsd / cotizacionUsd;
+    default: {
+      const nunca: never = convencion;
+      return nunca;
+    }
+  }
+}
+
 export type PuntoSerie = {
   fecha: string;
   valor: number;
@@ -39,7 +76,7 @@ export type BanguatClient = {
   tipoCambioHoy: () => Promise<Cotizacion>;
   tipoCambioDesde: (fechaInicialIso: string) => Promise<PuntoSerie[]>;
   monedasDisponibles: () => Promise<MonedaDisponible[]>;
-  tipoCambioMoneda: (codigo: number) => Promise<Cotizacion>;
+  tipoCambioMoneda: (codigo: number) => Promise<CotizacionMoneda>;
 };
 
 type CacheEntry = { expiresAt: number; value: unknown };
@@ -112,11 +149,77 @@ export function createBanguatClient(options: ClientOptions = {}): BanguatClient 
       remember(cache, now, "monedas", TTL_HOY_MS, async () =>
         parseMonedas(await soap(fetchImpl, "VariablesDisponibles", {})),
       ),
-    tipoCambioMoneda: (codigo) =>
-      remember(cache, now, `moneda:${codigo}`, TTL_HOY_MS, async () =>
-        parseMoneda(await soap(fetchImpl, "Variables", { variable: codigo }), codigo),
-      ),
+    tipoCambioMoneda: (codigo) => cotizarMoneda(codigo),
   };
+
+  async function cotizarMoneda(codigo: number): Promise<CotizacionMoneda> {
+    if (codigo === 1) {
+      throw new BanguatError(
+        "El código 1 es Quetzales, la moneda base. No tiene cotización contra el quetzal.",
+      );
+    }
+    return remember(cache, now, `moneda:${codigo}`, TTL_HOY_MS, async () => {
+      if (codigo === 2) {
+        const nombre = await nombreMoneda(codigo);
+        const hoy = await remember(cache, now, "hoy", TTL_HOY_MS, async () =>
+          parseHoy(await soap(fetchImpl, "TipoCambioDia", {})),
+        );
+        return {
+          fecha: hoy.fecha,
+          codigo: 2,
+          nombre,
+          quetzales_por_unidad: hoy.valor,
+          cotizacion_usd: 1,
+          convencion: "usd_por_unidad",
+          compra: hoy.valor,
+          venta: hoy.valor,
+          descontinuada: false,
+          referencia: "misma_fecha",
+        };
+      }
+
+      const cruda = parseVariable(await soap(fetchImpl, "Variables", { variable: codigo }), codigo);
+      const referencia = await referenciaUsd(cruda.fecha);
+      const convencion = convencionDe(codigo);
+      const nombreCotizacion = await nombreMoneda(codigo);
+      return {
+        fecha: cruda.fecha,
+        codigo,
+        nombre: nombreCotizacion,
+        quetzales_por_unidad: aQuetzales(convencion, cruda.venta, referencia.valor),
+        cotizacion_usd: cruda.venta,
+        convencion,
+        compra: cruda.compra,
+        venta: cruda.venta,
+        descontinuada: false,
+        referencia: referencia.fuente,
+      };
+    });
+  }
+
+  async function nombreMoneda(codigo: number): Promise<string> {
+    const monedas = await remember(cache, now, "monedas", TTL_HOY_MS, async () =>
+      parseMonedas(await soap(fetchImpl, "VariablesDisponibles", {})),
+    );
+    return monedas.find((moneda) => moneda.codigo === codigo)?.descripcion ?? `Moneda ${codigo}`;
+  }
+
+  async function referenciaUsd(fecha: string): Promise<{ valor: number; fuente: "misma_fecha" | "tipo_cambio_dia" }> {
+    const fechainit = aFormatoServicio(fecha);
+    const puntos = await remember(cache, now, `usdref:${fechainit}`, TTL_SERIE_MS, async () =>
+      parseSerieDe(
+        await soap(fetchImpl, "TipoCambioRango", { fechainit, fechafin: fechainit }),
+        "TipoCambioRangoResponse",
+        "TipoCambioRangoResult",
+      ),
+    );
+    const misma = puntos.find((punto) => punto.fecha === fecha);
+    if (misma) return { valor: misma.valor, fuente: "misma_fecha" };
+    const hoy = await remember(cache, now, "hoy", TTL_HOY_MS, async () =>
+      parseHoy(await soap(fetchImpl, "TipoCambioDia", {})),
+    );
+    return { valor: hoy.valor, fuente: "tipo_cambio_dia" };
+  }
 }
 
 async function remember<T>(
@@ -197,8 +300,16 @@ function parseHoy(body: unknown): Cotizacion {
 }
 
 function parseSerie(body: unknown): PuntoSerie[] {
-  const result = child(child(body, "TipoCambioFechaInicialResponse"), "TipoCambioFechaInicialResult");
-  const puntos = asList(child(child(result, "Vars"), "Var")).map((item) => {
+  const puntos = parseSerieDe(body, "TipoCambioFechaInicialResponse", "TipoCambioFechaInicialResult");
+  if (puntos.length === 0) {
+    throw new BanguatError("El Banguat no devolvió registros para esa fecha inicial.");
+  }
+  return puntos;
+}
+
+function parseSerieDe(body: unknown, respuesta: string, resultado: string): PuntoSerie[] {
+  const result = child(child(body, respuesta), resultado);
+  return asList(child(child(result, "Vars"), "Var")).map((item) => {
     const venta = num(child(item, "venta"), "venta");
     return {
       fecha: isoFecha(text(child(item, "fecha"))),
@@ -208,10 +319,35 @@ function parseSerie(body: unknown): PuntoSerie[] {
       venta,
     };
   });
-  if (puntos.length === 0) {
-    throw new BanguatError("El Banguat no devolvió registros para esa fecha inicial.");
+}
+
+function parseVariable(body: unknown, codigo: number): { fecha: string; compra: number; venta: number } {
+  const result = child(child(body, "VariablesResponse"), "VariablesResult");
+  const dia = last(asList(child(child(result, "CambioDia"), "Var")));
+  if (!dia) {
+    throw new BanguatError(
+      `El Banguat no devolvió tipo de cambio para la moneda ${codigo}. Revisa el código con monedas_disponibles.`,
+    );
   }
-  return puntos;
+  return {
+    fecha: isoFecha(text(child(dia, "fecha"))),
+    compra: num(child(dia, "compra"), "compra"),
+    venta: num(child(dia, "venta"), "venta"),
+  };
+}
+
+function aFormatoServicio(iso: string): string {
+  const value = iso.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new BanguatError(`Fecha inválida: "${iso}". Usa el formato YYYY-MM-DD.`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  const exists =
+    utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
+  if (!exists) throw new BanguatError(`Fecha inválida: "${value}" no existe en el calendario.`);
+  return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
 function parseMonedas(body: unknown): MonedaDisponible[] {
@@ -224,27 +360,6 @@ function parseMonedas(body: unknown): MonedaDisponible[] {
     throw new BanguatError("El Banguat no devolvió monedas disponibles.");
   }
   return monedas;
-}
-
-function parseMoneda(body: unknown, codigo: number): Cotizacion {
-  const result = child(child(body, "VariablesResponse"), "VariablesResult");
-  const dolar = last(asList(child(child(result, "CambioDolar"), "VarDolar")));
-  if (dolar) return cotizacionDolar(dolar);
-
-  const dia = last(asList(child(child(result, "CambioDia"), "Var")));
-  if (!dia) {
-    throw new BanguatError(
-      `El Banguat no devolvió tipo de cambio para la moneda ${codigo}. Revisa el código con monedas_disponibles.`,
-    );
-  }
-  const venta = num(child(dia, "venta"), "venta");
-  return {
-    fecha: isoFecha(text(child(dia, "fecha"))),
-    valor: venta,
-    moneda: String(num(child(dia, "moneda"), "moneda")),
-    compra: num(child(dia, "compra"), "compra"),
-    venta,
-  };
 }
 
 function cotizacionDolar(item: unknown): Cotizacion {

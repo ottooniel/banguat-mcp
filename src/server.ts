@@ -6,6 +6,7 @@ import {
   fechaInicialError,
   type BanguatClient,
   type Cotizacion,
+  type CotizacionMoneda,
   type PuntoSerie,
 } from "./banguat.js";
 
@@ -25,6 +26,18 @@ const codigoMoneda = z.coerce
   .int("El código de moneda debe ser un entero. Obténlo con monedas_disponibles.")
   .positive("El código de moneda debe ser un entero positivo. Obténlo con monedas_disponibles.")
   .describe("Código numérico de la moneda, el campo moneda de monedas_disponibles. Ejemplo: 2 dólar, 24 euro.");
+
+const monedaSchema = {
+  fecha: z.string().describe("Fecha de la cotización, YYYY-MM-DD"),
+  codigo: z.number().describe("Código de monedas_disponibles"),
+  nombre: z.string().describe("Nombre de la moneda en el catálogo del Banguat"),
+  quetzales_por_unidad: z.number().describe("Quetzales por 1 unidad de esa moneda"),
+  cotizacion_usd: z.number().describe("Cifra publicada por el Banguat, cotizada contra el dólar"),
+  convencion: z.enum(["usd_por_unidad", "unidades_por_usd"]),
+  compra: z.number(),
+  venta: z.number(),
+  descontinuada: z.boolean(),
+};
 
 const cotizacionSchema = {
   fecha: z.string().describe("Fecha de la cotización, YYYY-MM-DD"),
@@ -120,14 +133,14 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     {
       title: "Tipo de cambio de una moneda",
       description:
-        "Devuelve el tipo de cambio vigente de una moneda del catálogo del Banguat, identificada por el código numérico de monedas_disponibles (operación Variables). Para el dólar de referencia del día prefiere tipo_cambio_hoy. El valor es la referencia si el código es el dólar (2) y el tipo de venta en las demás monedas.",
+        "Convierte a quetzales el tipo de cambio de una moneda del catálogo del Banguat (operación Variables, cotizada contra el dólar). Códigos 9, 24 y 26 (libra, euro, DEG) vienen en USD por 1 unidad; el resto, en unidades por 1 USD. El código 2 usa la referencia del dólar del día. El código 1 (quetzal) no aplica. Para el dólar de hoy también puedes usar tipo_cambio_hoy.",
       inputSchema: { codigo: codigoMoneda },
-      outputSchema: cotizacionSchema,
+      outputSchema: monedaSchema,
     },
     async ({ codigo }) =>
       run(async () => {
         const cotizacion = await client.tipoCambioMoneda(codigo);
-        return ok(textoMoneda(codigo, cotizacion), datosCotizacion(cotizacion));
+        return ok(textoMoneda(cotizacion), datosMoneda(cotizacion));
       }),
   );
 
@@ -160,12 +173,38 @@ function textoSerie(desde: string, serie: PuntoSerie[]): string {
   ].join("\n");
 }
 
-function textoMoneda(codigo: number, cotizacion: Cotizacion): string {
-  const fecha = mostrarFecha(cotizacion.fecha);
-  if (cotizacion.moneda === "USD") {
-    return `Tipo de cambio de referencia USD/GTQ del ${fecha}: ${cotizacion.valor} quetzales por 1 dólar (código ${codigo}).`;
+function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
+  return {
+    fecha: cotizacion.fecha,
+    codigo: cotizacion.codigo,
+    nombre: cotizacion.nombre,
+    quetzales_por_unidad: cotizacion.quetzales_por_unidad,
+    cotizacion_usd: cotizacion.cotizacion_usd,
+    convencion: cotizacion.convencion,
+    compra: cotizacion.compra,
+    venta: cotizacion.venta,
+    descontinuada: cotizacion.descontinuada,
+  };
+}
+
+function textoMoneda(cotizacion: CotizacionMoneda): string {
+  const frase = fraseCotizacion(cotizacion);
+  const base = `1 ${cotizacion.nombre} = Q${cotizacion.quetzales_por_unidad.toFixed(2)} al ${mostrarFecha(cotizacion.fecha)} (cotización ${frase}).`;
+  if (cotizacion.referencia === "misma_fecha") return base;
+  return `${base} No había referencia USD de esa fecha; se usó la de TipoCambioDia.`;
+}
+
+function fraseCotizacion(cotizacion: CotizacionMoneda): string {
+  switch (cotizacion.convencion) {
+    case "usd_por_unidad":
+      return `${cotizacion.cotizacion_usd} USD por ${cotizacion.nombre.toLowerCase()}`;
+    case "unidades_por_usd":
+      return `${cotizacion.cotizacion_usd} ${cotizacion.nombre.toLowerCase()} por 1 USD`;
+    default: {
+      const nunca: never = cotizacion.convencion;
+      return nunca;
+    }
   }
-  return `Tipo de cambio de la moneda ${cotizacion.moneda} al ${fecha}: venta ${cotizacion.venta}, compra ${cotizacion.compra}. El valor es el tipo de venta publicado por el Banguat para el código ${codigo}.`;
 }
 
 function mostrarFecha(iso: string): string {
