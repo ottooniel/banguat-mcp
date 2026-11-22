@@ -147,15 +147,17 @@ describe("tools MCP", () => {
     const ok = asResult(
       await client.callTool({ name: "tipo_cambio_desde", arguments: { fecha_inicial: "2026-11-18" } }),
     );
+    const variacion = Number((((7.64059 - 7.64489) / 7.64489) * 100).toPrecision(6));
     expect(ok.structuredContent).toMatchObject({
       agrupacion: "diaria",
-      resumen: { inicio: "2026-11-18", fin: "2026-11-23", registros_originales: 2 },
+      resumen: { inicio: "2026-11-18", fin: "2026-11-23", registros_originales: 2, variacion_pct: variacion },
       serie: [
         { fecha: "2026-11-18", cierre: 7.64489, min: 7.64489, max: 7.64489, publicado_anticipado: false },
         { fecha: "2026-11-23", cierre: 7.64059, min: 7.64059, max: 7.64059, publicado_anticipado: true },
       ],
     });
     expect(JSON.stringify(ok.content)).toContain("publicado por adelantado");
+    expect(JSON.stringify(ok.content)).toContain(`Variación ${variacion.toFixed(2)}%.`);
 
     const futura = asResult(
       await client.callTool({ name: "tipo_cambio_desde", arguments: { fecha_inicial: "2099-01-01" } }),

@@ -325,7 +325,7 @@ function datosCotizacion(cotizacion: Cotizacion): {
 function textoSerie(titulo: string, lista: SerieLista, aviso?: string): string {
   const { resumen, serie, agrupacion: modo } = redondearDatos(lista);
   const lineas = [
-    `${titulo} del ${mostrarFecha(resumen.inicio)} al ${mostrarFecha(resumen.fin)}. Agrupación ${modo}. ${resumen.registros_originales} registros. Variación ${resumen.variacion_pct}%.`,
+    `${titulo} del ${mostrarFecha(resumen.inicio)} al ${mostrarFecha(resumen.fin)}. Agrupación ${modo}. ${resumen.registros_originales} registros. Variación ${resumen.variacion_pct.toFixed(2)}%.`,
     `Mínimo ${resumen.minimo.valor} el ${mostrarFecha(resumen.minimo.fecha)}. Máximo ${resumen.maximo.valor} el ${mostrarFecha(resumen.maximo.fecha)}.`,
   ];
   if (aviso) lineas.push(aviso);
