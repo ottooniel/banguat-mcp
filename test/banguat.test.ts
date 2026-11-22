@@ -162,8 +162,8 @@ describe("cliente SOAP", () => {
     });
 
     await expect(client.tipoCambioDesde("2026-11-18")).resolves.toEqual([
-      { fecha: "2026-11-18", valor: 7.64489, moneda: "USD", compra: 7.64489, venta: 7.64489 },
-      { fecha: "2026-11-19", valor: 7.64682, moneda: "USD", compra: 7.64, venta: 7.64682 },
+      { fecha: "2026-11-18", valor: 7.64489, moneda: "USD", compra: 7.64489, venta: 7.64489, publicado_anticipado: false },
+      { fecha: "2026-11-19", valor: 7.64682, moneda: "USD", compra: 7.64, venta: 7.64682, publicado_anticipado: false },
     ]);
     expect(seen[0]).toContain("<fechainit>18/11/2026</fechainit>");
     expect(seen[0]).toContain("TipoCambioFechaInicial");
@@ -179,6 +179,21 @@ describe("cliente SOAP", () => {
     expect(seen.at(-1)).toContain("TipoCambioRango");
     expect(seen.at(-1)).toContain("<fechafin>20/11/2026</fechafin>");
     await expect(conFin.tipoCambioDesde("2026-11-20", "2026-11-18")).rejects.toThrow(/anterior/);
+  });
+
+  it("marca como publicado por adelantado un punto posterior a hoy", async () => {
+    const xml = XML_SERIE.replace(
+      "</Vars>",
+      `<Var><moneda>2</moneda><fecha>23/11/2026</fecha><venta>7.64059</venta><compra>7.64059</compra></Var></Vars>`,
+    );
+    const client = createBanguatClient({
+      fetch: async () => xmlResponse(xml),
+      now: () => HOY.getTime(),
+    });
+    const serie = await client.tipoCambioDesde("2026-11-18");
+    expect(serie.find((punto) => punto.fecha === "2026-11-22")).toBeUndefined();
+    expect(serie.find((punto) => punto.fecha === "2026-11-23")?.publicado_anticipado).toBe(true);
+    expect(serie.find((punto) => punto.fecha === "2026-11-19")?.publicado_anticipado).toBe(false);
   });
 
   it("lista las monedas del catálogo", async () => {
@@ -297,9 +312,10 @@ describe("cliente SOAP", () => {
     expect(calls).toBe(0);
   });
 
-  it("cachea el día una hora y la serie 24 horas", async () => {
+  it("cachea el día una hora y la serie dentro del mismo día de Guatemala", async () => {
     let calls = 0;
-    let clock = HOY.getTime();
+    const medianoche = Date.parse("2026-11-22T06:00:00.000Z");
+    let clock = medianoche;
     const client = createBanguatClient({
       fetch: async (_url, init) => {
         calls += 1;
@@ -309,18 +325,18 @@ describe("cliente SOAP", () => {
     });
 
     await client.tipoCambioHoy();
-    clock = HOY.getTime() + TTL_HOY_MS - 1;
+    clock = medianoche + TTL_HOY_MS - 1;
     await client.tipoCambioHoy();
     expect(calls).toBe(1);
-    clock = HOY.getTime() + TTL_HOY_MS;
+    clock = medianoche + TTL_HOY_MS;
     await client.tipoCambioHoy();
     expect(calls).toBe(2);
 
     await client.tipoCambioDesde("2026-01-01");
-    clock = HOY.getTime() + TTL_HOY_MS + TTL_SERIE_MS - 1;
+    clock = medianoche + 23 * TTL_HOY_MS;
     await client.tipoCambioDesde("2026-01-01");
     expect(calls).toBe(3);
-    clock = HOY.getTime() + TTL_HOY_MS + TTL_SERIE_MS;
+    clock = medianoche + 25 * TTL_HOY_MS;
     await client.tipoCambioDesde("2026-01-01");
     expect(calls).toBe(4);
   });
@@ -346,6 +362,68 @@ describe("cliente SOAP", () => {
       },
     });
     await expect(client.tipoCambioHoy()).rejects.toThrow(/no respondió en 10 segundos/);
+  });
+
+  it("usa la fecha de Guatemala en la clave y comparte la petición en vuelo", async () => {
+    const cache = new Map();
+    let calls = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const client = createBanguatClient({
+      cache,
+      now: () => HOY.getTime(),
+      fetch: async () => {
+        calls += 1;
+        await gate;
+        return xmlResponse(XML_HOY);
+      },
+    });
+    const pending = Promise.all([client.tipoCambioHoy(), client.tipoCambioHoy()]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toBe(1);
+    release();
+    await pending;
+    expect([...cache.keys()]).toContain("hoy:2026-11-22");
+  });
+
+  it("borra la entrada más vieja al pasar de 200", async () => {
+    const cache = new Map();
+    let calls = 0;
+    const client = createBanguatClient({
+      cache,
+      now: () => HOY.getTime(),
+      fetch: async () => {
+        calls += 1;
+        return xmlResponse(XML_SERIE);
+      },
+    });
+    const fecha = (dias: number) => {
+      const cursor = new Date(Date.UTC(2026, 10, 22));
+      cursor.setUTCDate(cursor.getUTCDate() - dias);
+      return cursor.toISOString().slice(0, 10);
+    };
+    for (let dia = 1; dia <= 201; dia += 1) await client.tipoCambioDesde(fecha(dia));
+    expect(cache.size).toBe(200);
+    const hechas = calls;
+    await client.tipoCambioDesde(fecha(1));
+    expect(calls).toBe(hechas + 1);
+    await client.tipoCambioDesde(fecha(201));
+    expect(calls).toBe(hechas + 1);
+  });
+
+  it("toServiceDate usa el reloj inyectado del cliente", async () => {
+    let calls = 0;
+    const client = createBanguatClient({
+      now: () => Date.parse("2020-01-01T18:00:00.000Z"),
+      fetch: async () => {
+        calls += 1;
+        return xmlResponse(XML_SERIE);
+      },
+    });
+    await expect(client.tipoCambioDesde("2026-01-01")).rejects.toThrow(/Fecha futura/);
+    expect(calls).toBe(0);
   });
 
   it("traduce un SOAP Fault y un HTTP de error", async () => {
