@@ -1,13 +1,15 @@
+import { nombrePlural } from "./nombres.js";
+
 export function redondear(n: number): number {
   if (!Number.isFinite(n)) return n;
   return Number(n.toPrecision(6));
 }
 
-export function formatoQuetzales(q: number, nombre: string): string {
+export function formatoQuetzales(q: number, codigo: number, respaldo: string): string {
   const valor = redondear(q);
   if (valor >= 0.1) return `Q${valor.toFixed(4)}`;
   const porCien = redondear(valor * 100);
-  return `100 ${nombre} = Q${porCien.toFixed(4)}`;
+  return `100 ${nombrePlural(codigo, respaldo)} = Q${porCien.toFixed(4)}`;
 }
 
 export function redondearDatos<T>(value: T): T {

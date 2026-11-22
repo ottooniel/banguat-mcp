@@ -215,6 +215,45 @@ describe("tools MCP", () => {
       "1 peso mexicano = Q0.4021 al 20/11/2026 (19.0201 pesos mexicanos por 1 USD)",
     );
 
+    const plurales = await conectar(
+      clientFalso({
+        tipoCambioMoneda: async (codigo) => {
+          const catalogo: Record<number, { nombre: string; unidades: number }> = {
+            38: { nombre: "Pesos Colombianos", unidades: 3419.85 },
+            41: { nombre: "Bolívar Soberano", unidades: 10000 },
+            31: { nombre: "Won Coreano", unidades: 1350 },
+          };
+          const moneda = catalogo[codigo];
+          if (!moneda) return cotizacionMoneda(codigo);
+          return {
+            fecha: "2026-11-20",
+            codigo,
+            nombre: moneda.nombre,
+            quetzales_por_unidad: 7.64781 / moneda.unidades,
+            cotizacion_usd: moneda.unidades,
+            convencion: "unidades_por_usd",
+            compra: moneda.unidades,
+            venta: moneda.unidades,
+            descontinuada: false,
+            referencia: "misma_fecha",
+            fecha_referencia: "2026-11-20",
+          };
+        },
+      }),
+    );
+    const colombiano = asResult(await plurales.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 38 } }));
+    expect(JSON.stringify(colombiano.content)).toContain(
+      "100 pesos colombianos = Q0.2236 al 20/11/2026 (3,419.85 pesos colombianos por 1 USD).",
+    );
+    const soberano = asResult(await plurales.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 41 } }));
+    expect(JSON.stringify(soberano.content)).toContain(
+      "100 bolívares soberanos = Q0.0765 al 20/11/2026 (10,000 bolívares soberanos por 1 USD).",
+    );
+    const won = asResult(await plurales.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 31 } }));
+    expect(JSON.stringify(won.content)).toContain(
+      "100 wones coreanos = Q0.5665 al 20/11/2026 (1,350 wones coreanos por 1 USD).",
+    );
+
     const rango = asResult(
       await client.callTool({
         name: "tipo_cambio_moneda_rango",

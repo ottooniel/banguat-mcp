@@ -359,7 +359,7 @@ function datosMoneda(cotizacion: CotizacionMoneda): Record<string, unknown> {
 function textoMoneda(cotizacion: CotizacionMoneda): string {
   const frase = fraseCotizacion(cotizacion);
   const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
-  let base = `${etiquetaQuetzales(cotizacion.quetzales_por_unidad, cotizacion.nombre, singular)} al ${mostrarFecha(cotizacion.fecha)} (${frase}).`;
+  let base = `${etiquetaQuetzales(cotizacion.quetzales_por_unidad, cotizacion.codigo, cotizacion.nombre, singular)} al ${mostrarFecha(cotizacion.fecha)} (${frase}).`;
   if (cotizacion.referencia === "fecha_anterior") {
     base += ` Referencia USD del ${mostrarFecha(cotizacion.fecha_referencia)}.`;
   }
@@ -369,8 +369,8 @@ function textoMoneda(cotizacion: CotizacionMoneda): string {
   return base;
 }
 
-function etiquetaQuetzales(q: number, nombre: string, singular: string): string {
-  const texto = formatoQuetzales(q, nombre);
+function etiquetaQuetzales(q: number, codigo: number, nombre: string, singular: string): string {
+  const texto = formatoQuetzales(q, codigo, nombre);
   if (redondear(q) < 0.1) return texto;
   return `1 ${singular} = ${texto}`;
 }
@@ -378,11 +378,13 @@ function etiquetaQuetzales(q: number, nombre: string, singular: string): string 
 function fraseCotizacion(cotizacion: CotizacionMoneda): string {
   const cotizacionUsd = redondear(cotizacion.cotizacion_usd);
   const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
+  const plural = nombrePlural(cotizacion.codigo, cotizacion.nombre);
+  const cantidad = formatoMonto(cotizacionUsd);
   switch (cotizacion.convencion) {
     case "usd_por_unidad":
-      return `${cotizacionUsd} USD por ${singular}`;
+      return `${cantidad} USD por ${singular}`;
     case "unidades_por_usd":
-      return `${cotizacionUsd} ${cotizacion.nombre.toLowerCase()} por 1 USD`;
+      return `${cantidad} ${cotizacionUsd === 1 ? singular : plural} por 1 USD`;
     default: {
       const nunca: never = cotizacion.convencion;
       return nunca;
