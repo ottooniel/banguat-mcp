@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ottooniel/banguat-mcp",
+  "description": "Servidor MCP del tipo de cambio publicado por el web service del Banco de Guatemala.",
+  "repository": {
+    "url": "https://github.com/ottooniel/banguat-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "banguat-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
