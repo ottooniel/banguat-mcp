@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -52,6 +55,7 @@ const puntoAgregado = z.object({
   cierre: z.number(),
   min: z.number(),
   max: z.number(),
+  publicado_anticipado: z.boolean().describe("true si el Banguat ya publicó una fecha posterior a hoy"),
 });
 
 const monedaSchema = {
@@ -74,9 +78,15 @@ const cotizacionSchema = {
   venta: z.number().optional().describe("Tipo de venta, cuando el servicio lo envía"),
 };
 
+export function versionServidor(): string {
+  const ruta = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+  const paquete = JSON.parse(readFileSync(ruta, "utf8")) as { version: string };
+  return paquete.version;
+}
+
 export function createServer(client: BanguatClient = createBanguatClient()): McpServer {
   const server = new McpServer(
-    { name: "banguat", version: "1.0.0" },
+    { name: "banguat", version: versionServidor() },
     {
       instructions:
         "Consulta el tipo de cambio del web service SOAP del Banco de Guatemala. Los datos no son información oficial; la fuente oficial es https://banguat.gob.gt.",
@@ -147,7 +157,11 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
       run(async () => {
         const puntos = await client.tipoCambioMonedaRango(codigo, fecha_inicial, fecha_final);
         const lista = prepararSerie(
-          puntos.map((punto) => ({ fecha: punto.fecha, valor: punto.valor })),
+          puntos.map((punto) => ({
+            fecha: punto.fecha,
+            valor: punto.valor,
+            publicado_anticipado: punto.publicado_anticipado,
+          })),
           modo ?? "auto",
         );
         const primero = puntos[0];
@@ -233,8 +247,12 @@ function textoSerie(titulo: string, lista: SerieLista, aviso?: string): string {
     `Mínimo ${resumen.minimo.valor} el ${mostrarFecha(resumen.minimo.fecha)}. Máximo ${resumen.maximo.valor} el ${mostrarFecha(resumen.maximo.fecha)}.`,
   ];
   if (aviso) lineas.push(aviso);
+  if (serie.some((punto) => punto.publicado_anticipado)) {
+    lineas.push("Incluye tipo de cambio publicado por adelantado (fecha posterior a hoy, hora de Guatemala).");
+  }
   for (const punto of serie) {
-    lineas.push(`${punto.fecha}  cierre ${punto.cierre}  min ${punto.min}  max ${punto.max}`);
+    const marca = punto.publicado_anticipado ? "  publicado por adelantado" : "";
+    lineas.push(`${punto.fecha}  cierre ${punto.cierre}  min ${punto.min}  max ${punto.max}${marca}`);
   }
   return acotarLineas(lineas);
 }

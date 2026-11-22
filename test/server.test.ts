@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 import type { BanguatClient, CotizacionMoneda } from "../src/banguat.js";
-import { createServer } from "../src/server.js";
+import { createServer, versionServidor } from "../src/server.js";
 
 const XML_FECHA = "2026-11-22";
 
@@ -40,8 +43,8 @@ function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
   return {
     tipoCambioHoy: async () => ({ fecha: XML_FECHA, valor: 7.64781, moneda: "USD" }),
     tipoCambioDesde: async () => [
-      { fecha: "2026-11-18", valor: 7.64489, moneda: "USD", compra: 7.64489, venta: 7.64489 },
-      { fecha: XML_FECHA, valor: 7.64781, moneda: "USD", compra: 7.64781, venta: 7.64781 },
+      { fecha: "2026-11-18", valor: 7.64489, moneda: "USD", compra: 7.64489, venta: 7.64489, publicado_anticipado: false },
+      { fecha: "2026-11-23", valor: 7.64059, moneda: "USD", compra: 7.64059, venta: 7.64059, publicado_anticipado: true },
     ],
     tipoCambioMonedaRango: async () => [
       {
@@ -63,6 +66,7 @@ function clientFalso(overrides: Partial<BanguatClient> = {}): BanguatClient {
         compra: 1.09,
         venta: 1.1,
         referencia: "misma_fecha",
+        publicado_anticipado: false,
       },
     ],
     monedasDisponibles: async () => [
@@ -90,6 +94,14 @@ function asResult(value: unknown): CallToolResult {
 }
 
 describe("tools MCP", () => {
+  it("toma la versión desde package.json", () => {
+    const paquete = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")) as {
+      version: string;
+    };
+    expect(versionServidor()).toBe(paquete.version);
+    expect(versionServidor()).not.toBe("");
+  });
+
   it("anuncia las cuatro herramientas en español", async () => {
     const client = await conectar(clientFalso());
     const listed = await client.listTools();
@@ -124,12 +136,13 @@ describe("tools MCP", () => {
     );
     expect(ok.structuredContent).toMatchObject({
       agrupacion: "diaria",
-      resumen: { inicio: "2026-11-18", fin: XML_FECHA, registros_originales: 2 },
+      resumen: { inicio: "2026-11-18", fin: "2026-11-23", registros_originales: 2 },
       serie: [
-        { fecha: "2026-11-18", cierre: 7.64489, min: 7.64489, max: 7.64489 },
-        { fecha: XML_FECHA, cierre: 7.64781, min: 7.64781, max: 7.64781 },
+        { fecha: "2026-11-18", cierre: 7.64489, min: 7.64489, max: 7.64489, publicado_anticipado: false },
+        { fecha: "2026-11-23", cierre: 7.64059, min: 7.64059, max: 7.64059, publicado_anticipado: true },
       ],
     });
+    expect(JSON.stringify(ok.content)).toContain("publicado por adelantado");
 
     const futura = asResult(
       await client.callTool({ name: "tipo_cambio_desde", arguments: { fecha_inicial: "2099-01-01" } }),

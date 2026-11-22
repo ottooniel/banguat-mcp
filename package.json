@@ -2,8 +2,25 @@
   "name": "banguat-mcp",
   "version": "1.0.0",
   "description": "Servidor MCP del tipo de cambio publicado por el web service del Banco de Guatemala.",
-  "type": "module",
+  "author": "Ottoniel Menéndez <ottonielm64@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omenendezNIU/banguat-mcp.git"
+  },
+  "homepage": "https://github.com/omenendezNIU/banguat-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/omenendezNIU/banguat-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "guatemala",
+    "banguat",
+    "tipo-de-cambio",
+    "quetzal"
+  ],
+  "type": "module",
   "engines": {
     "node": ">=20"
   },
@@ -12,7 +29,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
