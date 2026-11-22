@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/omenendezNIU/banguat-mcp.git"
+    "url": "git+https://github.com/ottooniel/banguat-mcp.git"
   },
-  "homepage": "https://github.com/omenendezNIU/banguat-mcp#readme",
+  "homepage": "https://github.com/ottooniel/banguat-mcp#readme",
   "bugs": {
-    "url": "https://github.com/omenendezNIU/banguat-mcp/issues"
+    "url": "https://github.com/ottooniel/banguat-mcp/issues"
   },
   "keywords": [
     "mcp",

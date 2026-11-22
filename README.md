@@ -1,6 +1,6 @@
 # banguat-mcp
 
-[![CI](https://github.com/omenendezNIU/banguat-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/omenendezNIU/banguat-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/ottooniel/banguat-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ottooniel/banguat-mcp/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/banguat-mcp)](https://www.npmjs.com/package/banguat-mcp)
 
 Servidor [MCP](https://modelcontextprotocol.io) que consulta el tipo de cambio publicado por el web service SOAP del Banco de Guatemala y lo expresa en quetzales.
