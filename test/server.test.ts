@@ -119,8 +119,15 @@ describe("tools MCP", () => {
       "tipo_cambio_moneda",
       "tipo_cambio_moneda_rango",
     ]);
+    expect(listed.tools).toHaveLength(6);
     for (const tool of listed.tools) {
       expect(tool.description?.length ?? 0).toBeGreaterThan(40);
+      expect(tool.annotations).toMatchObject({
+        readOnlyHint: true,
+        openWorldHint: true,
+        idempotentHint: true,
+      });
+      expect(tool.annotations?.title).toBeTruthy();
     }
     const catalogo = listed.tools.find((tool) => tool.name === "monedas_disponibles");
     expect(catalogo?.description).toMatch(/descontinuada/);

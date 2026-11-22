@@ -97,6 +97,15 @@ export function versionServidor(): string {
   return paquete.version;
 }
 
+function anotaciones(title: string) {
+  return {
+    title,
+    readOnlyHint: true,
+    openWorldHint: true,
+    idempotentHint: true,
+  };
+}
+
 export function createServer(client: BanguatClient = createBanguatClient()): McpServer {
   const server = new McpServer(
     { name: "banguat", version: versionServidor() },
@@ -110,6 +119,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     "tipo_cambio_hoy",
     {
       title: "Tipo de cambio de hoy",
+      annotations: anotaciones("Tipo de cambio de hoy"),
       description:
         "Devuelve el tipo de cambio de referencia del dólar de Estados Unidos frente al quetzal (USD/GTQ) publicado hoy por el Banco de Guatemala. Úsala para el dólar del día, cuántos quetzales vale un dólar ahora, o el tipo de cambio de referencia. No recibe parámetros. Para otra moneda usa tipo_cambio_moneda; para una serie histórica usa tipo_cambio_desde.",
       outputSchema: cotizacionSchema,
@@ -129,6 +139,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     "tipo_cambio_desde",
     {
       title: "Serie del dólar desde una fecha",
+      annotations: anotaciones("Serie del dólar desde una fecha"),
       description:
         "Devuelve la serie del dólar (USD/GTQ), agregada, desde fecha_inicial. Sin fecha_final usa TipoCambioFechaInicial (hasta el día corriente). Con fecha_final usa TipoCambioRango. Sirve para historial y tendencia del dólar, no para otras monedas. La respuesta trae resumen y solo los puntos ya agrupados.",
       inputSchema: { fecha_inicial: fechaInicial, fecha_final: fechaFinal, agrupacion },
@@ -154,6 +165,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     "tipo_cambio_moneda_rango",
     {
       title: "Serie de una moneda en quetzales",
+      annotations: anotaciones("Serie de una moneda en quetzales"),
       description:
         "Devuelve la serie de una moneda entre fecha_inicial y fecha_final, convertida a quetzales con la misma regla que tipo_cambio_moneda (TipoCambioRangoMoneda más la referencia USD de cada fecha). El código sale de monedas_disponibles. El código 1 no aplica. Incluye resumen y puntos agrupados, no la serie diaria completa cuando la agrupación la reduce.",
       inputSchema: { codigo: codigoMoneda, fecha_inicial: fechaInicial, fecha_final: fechaSchema("Fecha final inclusive, YYYY-MM-DD, igual o posterior a fecha_inicial."), agrupacion },
@@ -206,6 +218,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     "monedas_disponibles",
     {
       title: "Monedas disponibles",
+      annotations: anotaciones("Monedas disponibles"),
       description:
         "Lista las monedas y variables que el web service del Banco de Guatemala permite consultar, con su código numérico (moneda) y su descripción. Úsala antes de tipo_cambio_moneda para elegir el código correcto. No recibe parámetros y no consulta el tipo de cambio de cada moneda. Algunas siguen en el catálogo aunque ya no se publican: tipo_cambio_moneda marca descontinuada=true cuando el último dato tiene más de 30 días.",
       outputSchema: {
@@ -231,6 +244,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     "tipo_cambio_moneda",
     {
       title: "Tipo de cambio de una moneda",
+      annotations: anotaciones("Tipo de cambio de una moneda"),
       description:
         "Convierte a quetzales el tipo de cambio de una moneda del catálogo del Banguat (operación Variables, cotizada contra el dólar). Códigos 9, 24 y 26 (libra, euro, DEG) vienen en USD por 1 unidad; el resto, en unidades por 1 USD. El código 2 usa la referencia del dólar del día. El código 1 (quetzal) no aplica. Para el dólar de hoy también puedes usar tipo_cambio_hoy.",
       inputSchema: { codigo: codigoMoneda },
@@ -247,6 +261,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     "convertir_monto",
     {
       title: "Convertir un monto",
+      annotations: anotaciones("Convertir un monto"),
       description:
         "Convierte un monto entre una moneda del catálogo y quetzales con el tipo de cambio vigente de tipo_cambio_moneda. direccion a_quetzales pasa de esa moneda a quetzales; desde_quetzales hace el camino inverso. El código 2 es el dólar de referencia. Si la moneda está descontinuada, no convierte.",
       inputSchema: { monto, codigo: codigoMoneda, direccion },
