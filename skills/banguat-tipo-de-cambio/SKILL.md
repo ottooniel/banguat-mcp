@@ -16,7 +16,7 @@ description: Consulta el tipo de cambio del Banco de Guatemala con el MCP bangua
 
 ## Cómo responder
 
-- Cita siempre la fecha del dato.
-- La fuente oficial es [banguat.gob.gt](https://banguat.gob.gt).
+Los datos vienen del web service del Banguat y no constituyen información oficial; la fuente oficial es banguat.gob.gt. No digas que el dato es oficial. Indica siempre la fecha del dato.
+
 - Si la moneda está descontinuada, avísalo. No conviertas con un tipo de cambio viejo.
 - Si un punto trae fecha posterior a hoy (hora de Guatemala), explica que el Banguat publica el tipo de cambio por adelantado, el del siguiente día hábil. `tipo_cambio_hoy` no cambia por ese dato.

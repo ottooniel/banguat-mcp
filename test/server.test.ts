@@ -346,6 +346,24 @@ describe("tools MCP", () => {
     expect(JSON.stringify(franco.content)).toContain("2001");
   });
 
+  it("no presenta el dato como oficial", async () => {
+    const client = await conectar(clientFalso());
+    const llamadas = [
+      { name: "tipo_cambio_hoy", arguments: {} },
+      { name: "tipo_cambio_desde", arguments: { fecha_inicial: "2026-11-18" } },
+      { name: "monedas_disponibles", arguments: {} },
+      { name: "tipo_cambio_moneda", arguments: { codigo: 24 } },
+      { name: "tipo_cambio_moneda_rango", arguments: { codigo: 24, fecha_inicial: "2026-11-18", fecha_final: "2026-11-20" } },
+      { name: "convertir_monto", arguments: { monto: 250, codigo: 24, direccion: "a_quetzales" } },
+    ];
+    for (const llamada of llamadas) {
+      const result = asResult(await client.callTool(llamada));
+      const texto = result.content.map((item) => ("text" in item ? item.text : "")).join("\n");
+      expect(texto).not.toMatch(/dato oficial/i);
+      expect(texto.endsWith("Fuente: web service del Banguat (no oficial).")).toBe(true);
+    }
+  });
+
   it("devuelve el mensaje del Banguat cuando el servicio falla", async () => {
     const client = await conectar(
       clientFalso({

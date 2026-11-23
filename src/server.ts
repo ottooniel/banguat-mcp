@@ -111,7 +111,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     { name: "banguat", version: versionServidor() },
     {
       instructions:
-        "Indica siempre la fecha del dato y que la fuente oficial es banguat.gob.gt. Para montos usa convertir_monto.",
+        "Los datos vienen del web service del Banguat y no constituyen información oficial; la fuente oficial es banguat.gob.gt. No digas que el dato es oficial. Indica siempre la fecha del dato.",
     },
   );
 
@@ -451,9 +451,15 @@ function mostrarFecha(iso: string): string {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+const AVISO_FUENTE = "Fuente: web service del Banguat (no oficial).";
+
+function conFuente(text: string): string {
+  return `${text}\n${AVISO_FUENTE}`;
+}
+
 function ok(text: string, data: Record<string, unknown>, aplicarRedondeo = true): CallToolResult {
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text", text: conFuente(text) }],
     structuredContent: aplicarRedondeo ? redondearDatos(data) : data,
   };
 }
@@ -463,6 +469,6 @@ async function run(work: () => Promise<CallToolResult>): Promise<CallToolResult>
     return await work();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido al consultar el Banguat.";
-    return { isError: true, content: [{ type: "text", text: message }] };
+    return { isError: true, content: [{ type: "text", text: conFuente(message) }] };
   }
 }
