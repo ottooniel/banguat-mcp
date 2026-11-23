@@ -194,6 +194,12 @@ describe("tools MCP", () => {
     expect(JSON.stringify(euro.content)).toContain("1 euro = Q8.4034 al 20/11/2026");
     expect(JSON.stringify(euro.content)).toContain("1.0988 USD por euro");
 
+    const dolar = asResult(await client.callTool({ name: "tipo_cambio_moneda", arguments: { codigo: 2 } }));
+    expect(JSON.stringify(dolar.content)).toContain(
+      "1 dólar de EE.UU. = Q7.6478 al 22/11/2026 (tipo de cambio de referencia).",
+    );
+    expect(JSON.stringify(dolar.content)).not.toContain("1 USD por dólar de EE.UU.");
+
     const peso = await conectar(
       clientFalso({
         tipoCambioMoneda: async () => ({

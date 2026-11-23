@@ -376,6 +376,7 @@ function etiquetaQuetzales(q: number, codigo: number, nombre: string, singular: 
 }
 
 function fraseCotizacion(cotizacion: CotizacionMoneda): string {
+  if (cotizacion.codigo === 2) return "tipo de cambio de referencia";
   const cotizacionUsd = redondear(cotizacion.cotizacion_usd);
   const singular = nombreSingular(cotizacion.codigo, cotizacion.nombre);
   const plural = nombrePlural(cotizacion.codigo, cotizacion.nombre);
