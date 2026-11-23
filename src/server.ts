@@ -111,7 +111,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     { name: "banguat", version: versionServidor() },
     {
       instructions:
-        "Los datos vienen del web service del Banguat y no constituyen información oficial; la fuente oficial es banguat.gob.gt. No digas que el dato es oficial. Indica siempre la fecha del dato.",
+        "Los datos vienen del web service del Banguat y no constituyen información oficial; la fuente oficial es banguat.gob.gt. No digas que el dato es oficial. Indica siempre la fecha del dato. Para cualquier monto usa convertir_monto en vez de calcular a mano.",
     },
   );
 
