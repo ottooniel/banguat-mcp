@@ -101,8 +101,9 @@ function anotaciones(title: string) {
   return {
     title,
     readOnlyHint: true,
-    openWorldHint: true,
+    destructiveHint: false,
     idempotentHint: true,
+    openWorldHint: true,
   };
 }
 

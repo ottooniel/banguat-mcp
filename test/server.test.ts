@@ -124,8 +124,9 @@ describe("tools MCP", () => {
       expect(tool.description?.length ?? 0).toBeGreaterThan(40);
       expect(tool.annotations).toMatchObject({
         readOnlyHint: true,
-        openWorldHint: true,
+        destructiveHint: false,
         idempotentHint: true,
+        openWorldHint: true,
       });
       expect(tool.annotations?.title).toBeTruthy();
     }
