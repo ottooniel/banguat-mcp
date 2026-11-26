@@ -1,6 +1,6 @@
 {
   "name": "banguat-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "mcpName": "io.github.ottooniel/banguat-mcp",
   "description": "Servidor MCP del tipo de cambio publicado por el web service del Banco de Guatemala.",
   "author": "Ottoniel Menéndez <ottonielm64@gmail.com>",
