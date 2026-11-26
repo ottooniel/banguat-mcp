@@ -167,11 +167,19 @@ Edita `%APPDATA%\Claude\claude_desktop_config.json` en Windows o `~/Library/Appl
   "mcpServers": {
     "banguat": {
       "command": "npx",
-      "args": ["-y", "banguat-mcp"]
+      "args": ["-y", "banguat-mcp@latest"]
     }
   }
 }
 ```
+
+En Windows también puedes registrarlo así:
+
+```bash
+claude mcp add banguat --scope user -- cmd /c npx -y banguat-mcp@latest
+```
+
+En Git Bash anteponer `MSYS_NO_PATHCONV=1`.
 
 Reinicia Claude Desktop después de guardar.
 
@@ -184,7 +192,7 @@ En `.cursor/mcp.json` o en el `mcp.json` del usuario:
   "mcpServers": {
     "banguat": {
       "command": "npx",
-      "args": ["-y", "banguat-mcp"]
+      "args": ["-y", "banguat-mcp@latest"]
     }
   }
 }
