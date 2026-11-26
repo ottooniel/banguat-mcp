@@ -121,6 +121,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     {
       title: "Tipo de cambio de hoy",
       annotations: anotaciones("Tipo de cambio de hoy"),
+      inputSchema: {},
       description:
         "Devuelve el tipo de cambio de referencia del dólar de Estados Unidos frente al quetzal (USD/GTQ) publicado hoy por el Banco de Guatemala. Úsala para el dólar del día, cuántos quetzales vale un dólar ahora, o el tipo de cambio de referencia. No recibe parámetros. Para otra moneda usa tipo_cambio_moneda; para una serie histórica usa tipo_cambio_desde.",
       outputSchema: cotizacionSchema,
@@ -220,6 +221,7 @@ export function createServer(client: BanguatClient = createBanguatClient()): Mcp
     {
       title: "Monedas disponibles",
       annotations: anotaciones("Monedas disponibles"),
+      inputSchema: {},
       description:
         "Lista las monedas y variables que el web service del Banco de Guatemala permite consultar, con su código numérico (moneda) y su descripción. Úsala antes de tipo_cambio_moneda para elegir el código correcto. No recibe parámetros y no consulta el tipo de cambio de cada moneda. Algunas siguen en el catálogo aunque ya no se publican: tipo_cambio_moneda marca descontinuada=true cuando el último dato tiene más de 30 días.",
       outputSchema: {

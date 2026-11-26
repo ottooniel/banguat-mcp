@@ -132,6 +132,9 @@ describe("tools MCP", () => {
     }
     const catalogo = listed.tools.find((tool) => tool.name === "monedas_disponibles");
     expect(catalogo?.description).toMatch(/descontinuada/);
+    const hoy = listed.tools.find((tool) => tool.name === "tipo_cambio_hoy");
+    expect(hoy?.inputSchema).toMatchObject({ type: "object" });
+    expect(catalogo?.inputSchema).toMatchObject({ type: "object" });
   });
 
   it("devuelve texto y datos estructurados del dólar del día", async () => {
