@@ -21,7 +21,7 @@ function fechaSchema(descripcion: string) {
     .trim()
     .superRefine((value, ctx) => {
       const message = fechaInicialError(value);
-      if (message) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      if (message) ctx.addIssue({ code: "custom", message });
     })
     .describe(descripcion);
 }
@@ -36,7 +36,7 @@ const agrupacion = z
   .describe("auto usa diaria hasta 62 puntos, semanal hasta cerca de un año y mensual en tramos más largos.");
 
 const monto = z
-  .number({ invalid_type_error: "El monto debe ser un número mayor que cero." })
+  .number({ error: "El monto debe ser un número mayor que cero." })
   .positive("El monto debe ser mayor que cero.")
   .describe("Cantidad a convertir, mayor que cero.");
 const direccion = z

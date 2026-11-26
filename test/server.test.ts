@@ -335,6 +335,16 @@ describe("tools MCP", () => {
       }),
     );
     expect(cero.isError).toBe(true);
+    expect(JSON.stringify(cero.content)).toMatch(/El monto debe ser mayor que cero/);
+
+    const negativo = asResult(
+      await client.callTool({
+        name: "convertir_monto",
+        arguments: { monto: -10, codigo: 24, direccion: "a_quetzales" },
+      }),
+    );
+    expect(negativo.isError).toBe(true);
+    expect(JSON.stringify(negativo.content)).toMatch(/El monto debe ser mayor que cero/);
 
     const vieja = await conectar(
       clientFalso({
