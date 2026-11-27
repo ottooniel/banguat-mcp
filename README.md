@@ -139,7 +139,7 @@ Todo número que sale en el texto o en los datos estructurados se redondea a 6 c
 
 ## Requisitos
 
-- Node.js 20 o superior
+- Node.js 22 o superior
 
 ## Instalación
 
